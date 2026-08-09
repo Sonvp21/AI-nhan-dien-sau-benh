@@ -25,3 +25,25 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# ===== Python / AI training (bổ sung riêng cho phần AgriAI) =====
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.pth
+*.pt
+*.h5
+*.onnx
+
+# Dataset - tải lại từ Kaggle, không cần lưu vào git
+tea_data/
+rice_data/
+tea_split/
+rice_split/
+*.zip
+
+# Kaggle credentials - TUYỆT ĐỐI không push
+kaggle.json
+.kaggle/
+access_token

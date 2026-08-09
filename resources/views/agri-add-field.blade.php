@@ -126,7 +126,7 @@ function addFieldFlow(){
     pinPlaced:false, pinX:50, pinY:50,
     crops:[
       {name:'Lúa', emoji:'🌾'}, {name:'Ngô', emoji:'🌽'}, {name:'Sắn', emoji:'🍠'},
-      {name:'Cà chua', emoji:'🍅'}, {name:'Khoai tây', emoji:'🥔'}, {name:'Chè', emoji:'🍃'},
+      {name:'Cà chua', emoji:'🍅'}, {name:'Chè', emoji:'🍃'},
     ],
     placePin(e){
       const rect = e.currentTarget.getBoundingClientRect();

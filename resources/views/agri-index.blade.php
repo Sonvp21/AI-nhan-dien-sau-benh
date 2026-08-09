@@ -229,17 +229,53 @@
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mt-4">
       <div class="card overflow-hidden md:col-span-2 rise rise-2">
-        <div class="h-40 md:h-56 bg-gradient-to-br from-[var(--leaf-soft)] to-[var(--mist)] flex items-center justify-center text-6xl md:text-8xl" x-text="currentResult.emoji"></div>
+        <div class="h-40 md:h-56 bg-gradient-to-br from-[var(--leaf-soft)] to-[var(--mist)] flex items-center justify-center text-6xl md:text-8xl relative overflow-hidden">
+          <template x-if="currentResult.isLive && previewUrl">
+            <img :src="previewUrl" class="absolute inset-0 w-full h-full object-cover">
+          </template>
+          <template x-if="!(currentResult.isLive && previewUrl)">
+            <span x-text="currentResult.emoji"></span>
+          </template>
+        </div>
         <div class="p-5 md:p-7">
           <div class="flex items-center justify-between">
             <h2 class="font-display font-bold text-[18px] md:text-[22px]" x-text="currentResult.disease"></h2>
             <span class="text-[11px] font-bold font-mono bg-[var(--soil-soft)] text-[var(--soil)] px-2.5 py-1 rounded-full" x-text="currentResult.level"></span>
           </div>
+          <template x-if="currentResult.isLive">
+            <span class="inline-flex items-center gap-1 text-[10px] font-bold font-mono bg-[var(--leaf-soft)] text-[var(--forest)] px-2 py-0.5 rounded-full mt-1.5">🧠 Kết quả AI thật</span>
+          </template>
+          <template x-if="!currentResult.isLive">
+            <span class="inline-flex items-center gap-1 text-[10px] font-bold font-mono bg-[var(--mist)] text-[#9AA9A0] px-2 py-0.5 rounded-full mt-1.5">📋 Dữ liệu mẫu (demo UI)</span>
+          </template>
           <p class="text-[12px] md:text-[13px] text-[#5B6F63] mt-1" x-text="currentResult.nameEn+' · Độ tin cậy '+currentResult.confidence"></p>
           <div class="mt-4 h-2 rounded-full bg-[#E4EEE7] overflow-hidden">
-            <div class="h-full bg-[var(--danger)] rounded-full" :style="`width:${currentResult.spread}%`"></div>
+            <div class="h-full rounded-full" :class="currentResult.isLive ? 'bg-[var(--forest)]' : 'bg-[var(--danger)]'" :style="`width:${currentResult.spread}%`"></div>
           </div>
-          <p class="text-[11px] md:text-[12px] text-[#5B6F63] mt-1.5" x-text="'Mức độ lây lan ước tính: '+currentResult.spread+'% khu vực'"></p>
+          <template x-if="currentResult.isLive">
+            <p class="text-[11px] md:text-[12px] text-[#5B6F63] mt-1.5">Thanh trên thể hiện độ tin cậy dự đoán của AI — model chưa ước tính mức độ lây lan thực tế</p>
+          </template>
+          <template x-if="!currentResult.isLive">
+            <p class="text-[11px] md:text-[12px] text-[#5B6F63] mt-1.5" x-text="'Mức độ lây lan ước tính: '+currentResult.spread+'% khu vực'"></p>
+          </template>
+
+          <!-- Top-3 khi model không chắc chắn -->
+          <template x-if="currentResult.isLive && currentResult.lowConfidence && currentResult.top3?.length">
+            <div class="mt-4 pt-4 border-t border-black/5">
+              <p class="text-[11px] font-semibold text-[var(--soil)] flex items-center gap-1.5 mb-2.5">
+                ⚠️ Độ tin cậy thấp — AI cân nhắc giữa nhiều khả năng
+              </p>
+              <div class="space-y-2">
+                <template x-for="t in currentResult.top3" :key="t.nameEn">
+                  <div class="flex items-center justify-between text-[12px]">
+                    <span :class="t.nameEn===currentResult.nameEn ? 'font-semibold text-[var(--forest)]' : 'text-[#5B6F63]'" x-text="t.disease"></span>
+                    <span class="font-mono font-semibold" :class="t.nameEn===currentResult.nameEn ? 'text-[var(--forest)]' : 'text-[#9AA9A0]'" x-text="t.confidence"></span>
+                  </div>
+                </template>
+              </div>
+              <p class="text-[11px] text-[#9AA9A0] mt-2.5">Nên chụp thêm ảnh rõ nét hơn hoặc tham khảo ý kiến chuyên gia để xác nhận</p>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -511,11 +547,24 @@
   <div class="flex-1 flex flex-col items-center justify-center px-8">
     <template x-if="scanState==='idle'">
       <div class="w-full max-w-xs md:max-w-sm rise">
-        <div class="aspect-square rounded-3xl border-2 border-dashed border-white/40 flex items-center justify-center relative bg-white/5">
-          <span class="text-7xl" x-text="currentCrop.emoji"></span>
-          <div class="absolute inset-4 border border-white/20 rounded-2xl"></div>
-        </div>
-        <p class="text-center text-[13px] text-white/70 mt-5">Đưa lá <span x-text="selectedCrop.toLowerCase()"></span> vào khung hình, giữ ổn định camera</p>
+        <label class="aspect-square rounded-3xl border-2 border-dashed border-white/40 flex items-center justify-center relative bg-white/5 cursor-pointer overflow-hidden">
+          <input type="file" accept="image/*" capture="environment" class="hidden" @change="handleFileSelect($event)">
+          <template x-if="!previewUrl">
+            <span class="text-7xl" x-text="currentCrop.emoji"></span>
+          </template>
+          <template x-if="previewUrl">
+            <img :src="previewUrl" class="w-full h-full object-cover">
+          </template>
+          <div class="absolute inset-4 border border-white/20 rounded-2xl pointer-events-none"></div>
+        </label>
+        <p class="text-center text-[13px] text-white/70 mt-5">
+          <template x-if="selectedCrop==='Chè'">
+            <span>Chạm để chọn ảnh lá chè — AI thật sẽ phân tích ảnh này</span>
+          </template>
+          <template x-if="selectedCrop!=='Chè'">
+            <span>Chạm để chọn ảnh — <span class="text-[var(--soil-soft,#FBE9D8)]">model demo cho <span x-text="selectedCrop"></span> chưa train, sẽ dùng kết quả mẫu</span></span>
+          </template>
+        </p>
       </div>
     </template>
     <template x-if="scanState==='analyzing'">
@@ -527,9 +576,9 @@
       </div>
     </template>
   </div>
-  <div class="pb-14 px-8 max-w-xs md:max-w-sm mx-auto w-full" x-show="scanState==='idle'">
-    <button @click="scanState='analyzing'; runScan()" class="btn-press w-full bg-white text-[var(--forest)] font-semibold rounded-2xl py-4 text-[15px]">
-      Chụp ảnh
+  <div class="pb-14 px-8 max-w-xs md:max-w-sm mx-auto w-full" x-show="scanState==='idle' && previewUrl">
+    <button @click="runScan()" class="btn-press w-full bg-white text-[var(--forest)] font-semibold rounded-2xl py-4 text-[15px]">
+      Phân tích ảnh
     </button>
   </div>
 </div>
@@ -572,12 +621,7 @@ function agriApp(){
       {name:'Ngô', emoji:'🌽'},
       {name:'Sắn', emoji:'🍠'},
       {name:'Cà chua', emoji:'🍅'},
-      {name:'Khoai tây', emoji:'🥔'},
-      {name:'Nho', emoji:'🍇'},
-      {name:'Táo', emoji:'🍎'},
       {name:'Chè', emoji:'🍃'},
-      {name:'Cà phê', emoji:'🫘'},
-      {name:'Xoài', emoji:'🥭'},
     ],
     get currentCrop(){
       return this.crops.find(c=>c.name===this.selectedCrop) || this.crops[0];
@@ -633,28 +677,91 @@ function agriApp(){
         steps:['Nhổ bỏ và tiêu hủy cây bị bệnh nặng để tránh lây lan','Dùng giống sắn kháng bệnh cho vụ sau','Kiểm soát bọ phấn trắng — trung gian truyền bệnh']},
       'Cà chua': {emoji:'🍅', disease:'Đốm nâu lá', nameEn:'Septoria Leaf Spot', confidence:'89.7%', level:'Trung bình', spread:44,
         steps:['Cắt tỉa lá bệnh, tránh tưới lên tán lá','Phun thuốc gốc đồng (Copper-based fungicide)','Tăng khoảng cách trồng để thông thoáng']},
-      'Khoai tây': {emoji:'🥔', disease:'Mốc sương', nameEn:'Late Blight', confidence:'93.4%', level:'Nặng', spread:70,
-        steps:['Phun thuốc gốc Metalaxyl ngay khi phát hiện','Tránh tưới vào chiều tối, giữ ruộng thoáng khí','Thu hoạch sớm nếu bệnh lan rộng trên 50% diện tích']},
-      'Nho': {emoji:'🍇', disease:'Thán thư', nameEn:'Black Rot', confidence:'90.2%', level:'Trung bình', spread:38,
-        steps:['Loại bỏ quả và lá bị nhiễm bệnh khỏi vườn','Phun thuốc phòng trước mùa mưa','Cắt tỉa tán để tăng lưu thông không khí']},
-      'Táo': {emoji:'🍎', disease:'Ghẻ táo', nameEn:'Apple Scab', confidence:'88.9%', level:'Nhẹ', spread:22,
-        steps:['Phun thuốc phòng vào đầu vụ xuân','Dọn sạch lá rụng dưới gốc vào mùa đông','Chọn giống kháng bệnh cho lứa trồng mới']},
       'Chè': {emoji:'🍃', disease:'Cây khỏe mạnh', nameEn:'Healthy', confidence:'97.8%', level:'Nhẹ', spread:0,
         steps:['Duy trì chế độ chăm sóc hiện tại','Kiểm tra định kỳ 2 tuần/lần vào mùa mưa','Bón phân cân đối NPK theo giai đoạn sinh trưởng']},
-      'Cà phê': {emoji:'☕', disease:'Gỉ sắt lá cà phê', nameEn:'Coffee Leaf Rust', confidence:'92.6%', level:'Trung bình', spread:48,
-        steps:['Phun thuốc gốc đồng hoặc Triazole','Tỉa cành tạo tán thông thoáng, giảm độ ẩm','Bón phân cân đối, tránh dư đạm']},
-      'Xoài': {emoji:'🥭', disease:'Thán thư xoài', nameEn:'Anthracnose', confidence:'90.8%', level:'Trung bình', spread:41,
-        steps:['Phun thuốc gốc Mancozeb trước và sau ra hoa','Tỉa cành thông thoáng, loại bỏ quả bệnh rụng','Tránh tưới nước lên hoa và quả non']},
     },
     get currentResult(){
-      return this.diseaseDB[this.selectedCrop] || this.diseaseDB['Lúa'];
+      return this.liveResult || this.diseaseDB[this.selectedCrop] || this.diseaseDB['Lúa'];
+    },
+
+    // ==== TÍCH HỢP AI THẬT (chỉ Chè có model đã train) ====
+    AI_API_URL: 'http://127.0.0.1:8000/predict',
+    selectedFile: null,
+    previewUrl: null,
+    liveResult: null,
+    handleFileSelect(e){
+      const file = e.target.files[0];
+      if(!file) return;
+      this.selectedFile = file;
+      this.previewUrl = URL.createObjectURL(file);
+      this.liveResult = null;
+    },
+    async runScan(){
+      this.scanState='analyzing';
+      this.scanProgress=0;
+      this.liveResult=null;
+
+      // Chỉ Chè có model AI thật đã train — các cây khác dùng dữ liệu mẫu
+      if(this.selectedCrop === 'Chè' && this.selectedFile){
+        this.scanLabel = 'Đang gửi ảnh tới AI...';
+        this.scanProgress = 20;
+        try{
+          const formData = new FormData();
+          formData.append('file', this.selectedFile);
+          const res = await fetch(this.AI_API_URL, { method:'POST', body: formData });
+          if(!res.ok) throw new Error('API lỗi: ' + res.status);
+          const data = await res.json();
+          this.scanProgress = 90;
+          this.scanLabel = 'Hoàn tất chẩn đoán';
+
+          // Map dữ liệu API thật về đúng format UI đang dùng
+          const diseaseEmojiMap = {
+            'Anthracnose':'🍂', 'algal leaf':'🟢', 'bird eye spot':'🍃', 'brown blight':'🍂',
+            'gray light':'🍃', 'healthy':'🍃', 'red leaf spot':'🍁', 'white spot':'⚪'
+          };
+          const titleCase = (s) => s.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+          this.liveResult = {
+            emoji: diseaseEmojiMap[data.disease_key] || '🍃',
+            disease: data.disease_name,
+            nameEn: titleCase(data.disease_key),
+            confidence: data.confidence + '%',
+            level: data.level,
+            spread: Math.round(data.confidence),
+            steps: data.recommended_steps,
+            isLive: true,
+            lowConfidence: data.confidence < 50,
+            top3: (data.top3 || []).map(t => ({
+              disease: t.disease_name,
+              nameEn: titleCase(t.disease_key),
+              confidence: t.confidence + '%',
+            })),
+          };
+          setTimeout(()=>{ this.scanProgress=100; setTimeout(()=>{ this.tab='result'; this.scanState='idle'; }, 300); }, 200);
+        }catch(err){
+          this.scanState='idle';
+          this.showToast('Không kết nối được tới AI server (đã bật uvicorn chưa?)');
+          console.error(err);
+        }
+        return;
+      }
+
+      // Cây chưa có model thật -> chạy animation demo như cũ
+      const labels=['Đang phân tích ảnh...','Nhận diện vùng tổn thương...','Đối chiếu mô hình AI...','Hoàn tất chẩn đoán'];
+      const interval=setInterval(()=>{
+        this.scanProgress+=4;
+        const idx=Math.min(Math.floor(this.scanProgress/26),labels.length-1);
+        this.scanLabel=labels[idx];
+        if(this.scanProgress>=100){
+          clearInterval(interval);
+          setTimeout(()=>{ this.tab='result'; this.scanState='idle'; }, 400);
+        }
+      },70);
     },
 
     yieldForm:{area:1, n:90, p:42, k:43, temp:26, rainfall:180, humidity:75},
     yieldResult:null,
     yieldBaseline:{
-      'Lúa':6.2, 'Ngô':6.8, 'Sắn':21, 'Cà chua':35, 'Khoai tây':18,
-      'Nho':12, 'Táo':15, 'Chè':8.5, 'Cà phê':2.8, 'Xoài':9,
+      'Lúa':6.2, 'Ngô':6.8, 'Sắn':21, 'Cà chua':35, 'Chè':8.5,
     },
     predictYield(){
       const base = this.yieldBaseline[this.selectedCrop] || 6;
@@ -686,19 +793,7 @@ function agriApp(){
     },
 
     scanState:'idle', scanProgress:0, scanLabel:'Đang phân tích ảnh...',
-    startScan(){ this.tab='scan'; this.scanState='idle'; this.scanProgress=0; },
-    runScan(){
-      const labels=['Đang phân tích ảnh...','Nhận diện vùng tổn thương...','Đối chiếu mô hình AI...','Hoàn tất chẩn đoán'];
-      const interval=setInterval(()=>{
-        this.scanProgress+=4;
-        const idx=Math.min(Math.floor(this.scanProgress/26),labels.length-1);
-        this.scanLabel=labels[idx];
-        if(this.scanProgress>=100){
-          clearInterval(interval);
-          setTimeout(()=>{ this.tab='result'; this.scanState='idle'; }, 400);
-        }
-      },70);
-    }
+    startScan(){ this.tab='scan'; this.scanState='idle'; this.scanProgress=0; this.previewUrl=null; this.selectedFile=null; this.liveResult=null; },
   }
 }
 </script>

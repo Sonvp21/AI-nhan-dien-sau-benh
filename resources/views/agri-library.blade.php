@@ -45,7 +45,7 @@
 
   <!-- crop filter -->
   <div class="flex flex-wrap gap-2 mt-4 rise">
-    <template x-for="c in ['Tất cả','Lúa','Ngô','Sắn','Cà chua','Khoai tây','Nho','Táo','Chè','Cà phê','Xoài']" :key="c">
+    <template x-for="c in ['Tất cả','Lúa','Ngô','Sắn','Cà chua','Chè']" :key="c">
       <button @click="cropFilter=c" class="chip btn-press px-3.5 py-2 rounded-xl bg-white text-[12px] font-semibold"
               :class="cropFilter===c ? 'chip active' : ''" x-text="c"></button>
     </template>
@@ -129,24 +129,9 @@ function libraryFlow(){
       {id:5, crop:'Cà chua', emoji:'🍅', disease:'Đốm nâu lá', nameEn:'Septoria Leaf Spot', level:'Trung bình',
         symptom:'Đốm tròn nhỏ màu nâu viền vàng, xuất hiện trước ở lá già rồi lan dần lên trên.',
         steps:['Cắt tỉa lá bệnh, tránh tưới lên tán lá','Phun thuốc gốc đồng','Tăng khoảng cách trồng để thông thoáng']},
-      {id:6, crop:'Khoai tây', emoji:'🥔', disease:'Mốc sương', nameEn:'Late Blight', level:'Nặng',
-        symptom:'Vết bệnh loang nước ở mép lá, mặt dưới có lớp mốc trắng xám, lan rất nhanh khi trời ẩm mát.',
-        steps:['Phun thuốc gốc Metalaxyl ngay khi phát hiện','Tránh tưới chiều tối, giữ ruộng thoáng khí','Thu hoạch sớm nếu bệnh lan trên 50% diện tích']},
-      {id:7, crop:'Nho', emoji:'🍇', disease:'Thán thư', nameEn:'Black Rot', level:'Trung bình',
-        symptom:'Đốm nâu viền đen trên lá và quả, quả bệnh khô teo lại như quả nho khô đen.',
-        steps:['Loại bỏ quả và lá nhiễm bệnh khỏi vườn','Phun thuốc phòng trước mùa mưa','Cắt tỉa tán để tăng lưu thông không khí']},
-      {id:8, crop:'Táo', emoji:'🍎', disease:'Ghẻ táo', nameEn:'Apple Scab', level:'Nhẹ',
-        symptom:'Đốm xanh ô liu đến nâu sẫm trên lá và quả, bề mặt sần sùi như ghẻ.',
-        steps:['Phun thuốc phòng đầu vụ xuân','Dọn sạch lá rụng dưới gốc vào mùa đông','Chọn giống kháng bệnh cho lứa trồng mới']},
-      {id:9, crop:'Chè', emoji:'🍃', disease:'Rầy xanh gây hại', nameEn:'Tea Green Leafhopper', level:'Trung bình',
+      {id:6, crop:'Chè', emoji:'🍃', disease:'Rầy xanh gây hại', nameEn:'Tea Green Leafhopper', level:'Trung bình',
         symptom:'Lá non bị chích hút, mép lá cong xuống, chuyển màu nâu đỏ như bị cháy nắng.',
         steps:['Phun thuốc sinh học đúng ngưỡng mật độ','Hái đọt kịp thời để cắt nguồn thức ăn','Bón phân cân đối tránh dư đạm']},
-      {id:10, crop:'Cà phê', emoji:'☕', disease:'Gỉ sắt lá cà phê', nameEn:'Coffee Leaf Rust', level:'Trung bình',
-        symptom:'Đốm vàng cam dạng bột ở mặt dưới lá, lá vàng và rụng sớm khi bệnh nặng.',
-        steps:['Phun thuốc gốc đồng hoặc Triazole','Tỉa cành tạo tán thông thoáng','Bón phân cân đối, tránh dư đạm']},
-      {id:11, crop:'Xoài', emoji:'🥭', disease:'Thán thư xoài', nameEn:'Anthracnose', level:'Trung bình',
-        symptom:'Đốm đen nhỏ trên lá non, hoa và quả; quả chín xuất hiện đốm lõm thâm đen lan rộng.',
-        steps:['Phun thuốc gốc Mancozeb trước và sau ra hoa','Tỉa cành thông thoáng, loại bỏ quả bệnh rụng','Tránh tưới nước lên hoa và quả non']},
     ],
     get filtered(){
       return this.diseases.filter(d=>{
