@@ -39,6 +39,9 @@ venv/
 # Dataset - tải lại từ Kaggle, không cần lưu vào git
 tea_data/
 rice_data/
+rice_data/
+rice_data_clean/
+rice_split/
 tea_split/
 rice_split/
 *.zip

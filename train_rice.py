@@ -14,7 +14,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 import splitfolders
 
 # ==== BƯỚC 0: CHIA TRAIN/VAL/TEST ====
-SOURCE_DIR = "rice_data"
+SOURCE_DIR = "rice_data_clean"
 SPLIT_DIR = "rice_split"
 
 if not os.path.exists(SPLIT_DIR):
