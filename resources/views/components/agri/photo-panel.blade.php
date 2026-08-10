@@ -13,7 +13,7 @@
     </template>
     <template x-if="confirmedPhotos.length">
       <div class="absolute inset-0">
-        <img :src="confirmedPhotos[0]" class="w-full h-full object-cover">
+        <img :src="confirmedPhotos[0].url" class="w-full h-full object-cover">
         <span x-show="confirmedPhotos.length>1" class="absolute bottom-2 right-2 text-[11px] 2xl:text-[12px] font-semibold text-white px-2.5 py-1 rounded-full" style="background:rgba(18,52,29,.75)" x-text="'+' + (confirmedPhotos.length-1) + ' ảnh'"></span>
         <span class="absolute inset-0 flex items-center justify-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-white opacity-0 hover:opacity-100 transition" style="background:rgba(18,52,29,.45)">
           <i data-lucide="refresh-cw" class="w-4 h-4"></i> Đổi ảnh khác
