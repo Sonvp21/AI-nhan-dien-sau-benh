@@ -25,10 +25,10 @@ function agriApp(){
 
     // ==== TÍCH HỢP AI THẬT ====
     AI_API_URL: 'https://aiplant.girc.edu.vn/predict',
-    cropApiKey: {'Chè':'che', 'Lúa':'lua', 'Ngô':'ngo', 'Sắn':'san', 'Cà chua':'ca_chua'},
+    cropApiKey: {'Chè':'che', 'Lúa':'lua', 'Ngô':'ngo', 'Sắn':'san', 'Cà chua':'ca_chua', 'Ớt':'ot', 'Xoài':'xoai'},
     liveResult: null,
     titleCase(s){
-      let clean = s.replace(/^(Cassava___|Tomato___)/, '').replace(/_/g, ' ');
+      let clean = s.replace(/^(Cassava___|Tomato___|Pepper,_bell___)/, '').replace(/_/g, ' ').replace(/,/g, '');
       return clean.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
     },
 
