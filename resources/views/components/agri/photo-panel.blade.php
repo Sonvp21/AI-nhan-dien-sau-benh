@@ -39,7 +39,7 @@
   </div>
 
   <!-- TRIỆU CHỨNG KHÁC: chỉ hiện sau khi có kết quả -->
-  <div x-show="diagnosed" x-cloak x-transition:enter="transition ease-out duration-500" x-transition:enter-start="opacity-0 translate-y-3" x-transition:enter-end="opacity-100 translate-y-0" class="mt-6">
+  <div x-show="diagnosed && symptomPages.length" x-cloak x-transition:enter="transition ease-out duration-500" x-transition:enter-start="opacity-0 translate-y-3" x-transition:enter-end="opacity-100 translate-y-0" class="mt-6">
     <p class="text-[13px] 2xl:text-[14px] font-semibold" style="color:#4a5245">Triệu chứng khác thường gặp:</p>
     <div class="flex items-center gap-3 mt-3">
       <button @click="prevSymptomPage()" class="w-6 h-6 2xl:w-7 2xl:h-7 rounded-full border flex items-center justify-center shrink-0" style="border-color:#ddd8cb;color:#8a8f83"><i data-lucide="chevron-left" class="w-3.5 h-3.5"></i></button>
