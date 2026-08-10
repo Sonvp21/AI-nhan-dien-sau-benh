@@ -53,3 +53,9 @@ access_token
 
 # Ảnh chụp tạm gửi từ điện thoại qua tính năng quét mã QR (chế độ thuyết trình)
 /public/remote-uploads
+# Dataset cho mọi cây - pattern tổng quát, áp dụng cho mọi tên thư mục dataset
+mango_data/
+plantvillage_full/
+*_data/
+*_data_clean/
+*_split/

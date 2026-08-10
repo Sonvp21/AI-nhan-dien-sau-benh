@@ -96,3 +96,13 @@ Mỗi cây mới lặp lại đúng quy trình:
 10. `git add/commit/push` (Windows) -> `git pull` (server) -> `sudo systemctl restart agriai`
 11. Test qua domain thật: `curl -s --http1.1 -X POST https://aiplant.girc.edu.vn/predict -F "crop=<key_moi>" -F "file=@anh.jpg"`
 
+
+Danh sách dataset đã chọn — 7 cây
+#	Cây	Dataset	Link
+1	🍃 Chè	Identifying Disease in Tea leaves — Shashwat Tiwari	https://www.kaggle.com/datasets/shashwatwork/identifying-disease-in-tea-leafs
+2	🌾 Lúa	Rice Leaf Disease Images — Nirmal Sankalana	https://www.kaggle.com/datasets/nirmalsankalana/rice-leaf-disease-image
+3	🌽 Ngô	Corn or Maize Leaf Disease Dataset — Smaranjit Ghose	https://www.kaggle.com/datasets/smaranjitghose/corn-or-maize-leaf-disease-dataset
+4	🍠 Sắn	Cassava Leaf Disease Classification — Nirmal Sankalana	https://www.kaggle.com/datasets/nirmalsankalana/cassava-leaf-disease-classification
+5	🍅 Cà chua	Tomato leaf disease detection — kaustubh b	https://www.kaggle.com/datasets/kaustubhb999/tomatoleaf
+6	🥭 Xoài	Mango🥭 Leaf🍃🍂 Disease Dataset — Arya Shah	https://www.kaggle.com/datasets/aryashah2k/mango-leaf-disease-dataset
+7	🌶️ Ớt	PlantVillage (trích riêng phần Pepper bell) — Mohit Singh	https://www.kaggle.com/datasets/mohitsingh1804/plantvillage
