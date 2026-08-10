@@ -1,7 +1,7 @@
 {{-- ================= HEADER: banner full, chữ đè bên trái =================
      Responsive: mobile (mặc định) / HD (md:) / FHD (2xl:) --}}
 <header class="relative overflow-hidden border-b shrink-0" style="border-color:#eceae3">
-  <img src="{{ asset('image/header.jpg') }}" alt="Banner phòng lab / cây trồng" class="w-full h-auto block">
+  <img src="{{ asset('image/header.jpg') }}" alt="Banner phòng lab / cây trồng" class="w-full h-28 md:h-44 2xl:h-60 object-cover">
   <div class="absolute inset-0 bg-gradient-to-r from-white/95 via-white/55 to-transparent"></div>
   <div class="absolute inset-0 flex items-center gap-4 md:gap-5 2xl:gap-7 px-5 md:px-7 2xl:px-10">
     <!-- Bấm liên tiếp 5 lần vào logo để bật/tắt chế độ thuyết trình (ẩn, chỉ người thuyết trình biết) -->

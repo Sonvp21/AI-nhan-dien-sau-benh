@@ -58,7 +58,7 @@
 
     <template x-if="info.isLive && info.lowConfidence && info.top3 && info.top3.length">
       <div class="mt-4 pt-3" style="border-top:1px dashed #f0d9c4">
-        <p class="text-[11.5px] 2xl:text-[12.5px] font-semibold mb-2" style="color:#c9762c">⚠️ Độ tin cậy thấp — AI cân nhắc giữa nhiều khả năng</p>
+        <p class="text-[11.5px] 2xl:text-[12.5px] font-semibold mb-2" style="color:#c9762c">⚠️ Độ tin cậy thấp (AI cân nhắc giữa nhiều khả năng)</p>
         <div class="flex flex-col gap-1.5">
           <template x-for="t in info.top3" :key="t.nameEn">
             <div class="flex items-center justify-between text-[12px] 2xl:text-[13px]">
