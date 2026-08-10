@@ -182,8 +182,25 @@ function agriApp(){
           .then(data => {
             if(data && data.ready && data.photos && data.photos.length){
               this.stopQrPolling();
-              this.pendingFiles = data.photos.map(url => ({ file:null, url }));
-              this.modalStep = 'preview';
+              // Điện thoại đã tự chọn mô hình, chụp ảnh và bấm chẩn đoán rồi,
+              // nên web chỉ nhận ảnh + kết quả và hiển thị luôn, không cần
+              // mở modal xác nhận ảnh nữa.
+              this.confirmedPhotos.forEach(p => URL.revokeObjectURL(p.url));
+              this.confirmedPhotos = data.photos.map(url => ({ file:null, url }));
+              this.pendingFiles = [];
+              if(data.crop) this.selectedCrop = data.crop;
+              this.dropzoneModalOpen = false;
+              this.modalStep = 'choose';
+              this.symptomPage = 0;
+              if(data.result){
+                this.liveResult = data.result;
+                this.diagnosing = false;
+                this.diagnosed = true;
+              } else {
+                this.liveResult = null;
+                this.diagnosing = false;
+                this.diagnosed = false;
+              }
             }
           })
           .catch(() => {});
@@ -193,12 +210,21 @@ function agriApp(){
       if(this.qrPollTimer){ clearInterval(this.qrPollTimer); this.qrPollTimer = null; }
     },
 
+    // ==== cuộn ngang danh sách mô hình cây trồng (khu chọn mô hình) ====
+    scrollCrops(direction){
+      const el = this.$refs.cropScroll;
+      if(!el) return;
+      el.scrollBy({ left: direction * 220, behavior: 'smooth' });
+    },
+
     crops:[
       {name:'Chè', icon:'leaf', img: ASSETS.crops.che},
       {name:'Lúa', icon:'wheat', img: ASSETS.crops.lua},
       {name:'Ngô', icon:'leafy-green', img: ASSETS.crops.ngo},
       {name:'Sắn', icon:'sprout', img: ASSETS.crops.san},
       {name:'Cà chua', icon:'cherry', img: ASSETS.crops.cachua},
+      {name:'Ớt', icon:'flame', img: ASSETS.crops.ot || null},
+      {name:'Xoài', icon:'apple', img: ASSETS.crops.xoai || null},
     ],
     selectCrop(name){ this.selectedCrop = name; this.symptomPage = 0; this.diagnosed = false; this.diagnosing = false; this.liveResult = null; },
     get info(){ return this.liveResult || this.diseaseDB[this.selectedCrop]; },
@@ -232,6 +258,15 @@ function agriApp(){
         steps:['Duy trì chế độ chăm sóc hiện tại.','Kiểm tra định kỳ 2 tuần một lần vào mùa mưa.','Bón phân cân đối NPK theo giai đoạn sinh trưởng.'],
         symptoms:[{emoji:'🍃',caption:'Lá xanh, không có đốm bệnh'},{emoji:'🌱',caption:'Búp phát triển bình thường'},{emoji:'🌿',caption:'Tán cây đều, khỏe mạnh'},
                   {emoji:'🌳',caption:'Rễ phát triển tốt'},{emoji:'📈',caption:'Năng suất búp ổn định'},{emoji:'🍃',caption:'Màu lá xanh đậm tự nhiên'}]},
+      // Ớt, Xoài: chưa có model AI thật (chưa có trong cropApiKey) nên dùng dữ liệu mẫu
+      'Ớt': {disease:'Thán thư quả ớt', nameEn:'Chili Anthracnose', level:'Nặng', confidence:'92.5%',
+        steps:['Cắt bỏ, tiêu hủy quả bệnh để tránh lây lan.','Phun thuốc gốc Mancozeb hoặc Chlorothalonil.','Tránh tưới nước lên tán lá, giữ vườn thông thoáng.'],
+        symptoms:[{emoji:'🌶️',caption:'Đốm tròn lõm trên quả'},{emoji:'🍂',caption:'Viền đốm màu nâu sẫm'},{emoji:'🌿',caption:'Quả thối nhũn, rụng sớm'},
+                  {emoji:'🔴',caption:'Tâm đốm có vòng đồng tâm'},{emoji:'🍃',caption:'Lá vàng, rụng dần'},{emoji:'📉',caption:'Năng suất quả giảm mạnh'}]},
+      'Xoài': {disease:'Thán thư lá và quả', nameEn:'Mango Anthracnose', level:'Trung bình', confidence:'88.9%',
+        steps:['Tỉa cành tạo tán thông thoáng, giảm ẩm độ trong tán.','Phun thuốc gốc đồng (Copper-based fungicide) định kỳ.','Thu gom, tiêu hủy lá và quả rụng bị bệnh.'],
+        symptoms:[{emoji:'🥭',caption:'Đốm đen trên vỏ quả'},{emoji:'🍂',caption:'Lá non có đốm nâu cháy'},{emoji:'🌿',caption:'Hoa bị khô đen, rụng'},
+                  {emoji:'🔴',caption:'Đốm lan rộng khi quả chín'},{emoji:'🍃',caption:'Chồi non bị thối đen'},{emoji:'📉',caption:'Quả rụng non hàng loạt'}]},
     },
   }
 }

@@ -29,6 +29,8 @@
       ngo: '{{ asset("image/crop-ngo.png") }}',
       san: '{{ asset("image/crop-san.png") }}',
       cachua: '{{ asset("image/crop-cachua.png") }}',
+      ot: '{{ asset("image/crop-ot.jpg") }}',
+      xoai: '{{ asset("image/crop-xoai.jpg") }}',
     }
   };
 </script>
