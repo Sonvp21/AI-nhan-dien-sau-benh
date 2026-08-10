@@ -249,6 +249,12 @@
             <span class="inline-flex items-center gap-1 text-[10px] font-bold font-mono bg-[var(--mist)] text-[#9AA9A0] px-2 py-0.5 rounded-full mt-1.5">📋 Dữ liệu mẫu (demo UI)</span>
           </template>
           <p class="text-[12px] md:text-[13px] text-[#5B6F63] mt-1" x-text="currentResult.nameEn+' · Độ tin cậy '+currentResult.confidence"></p>
+          <template x-if="currentResult.pathogen">
+            <p class="text-[12px] text-[#5B6F63] mt-2"><span class="font-semibold">Tác nhân gây bệnh:</span> <span x-text="currentResult.pathogen"></span></p>
+          </template>
+          <template x-if="currentResult.conditions">
+            <p class="text-[12px] text-[#5B6F63] mt-1"><span class="font-semibold">Điều kiện phát sinh:</span> <span x-text="currentResult.conditions"></span></p>
+          </template>
           <div class="mt-4 h-2 rounded-full bg-[#E4EEE7] overflow-hidden">
             <div class="h-full rounded-full" :class="currentResult.isLive ? 'bg-[var(--forest)]' : 'bg-[var(--danger)]'" :style="`width:${currentResult.spread}%`"></div>
           </div>
@@ -558,10 +564,10 @@
           <div class="absolute inset-4 border border-white/20 rounded-2xl pointer-events-none"></div>
         </label>
         <p class="text-center text-[13px] text-white/70 mt-5">
-          <template x-if="selectedCrop==='Chè'">
-            <span>Chạm để chọn ảnh lá chè — AI thật sẽ phân tích ảnh này</span>
+          <template x-if="['Chè','Lúa','Ngô','Sắn','Cà chua'].includes(selectedCrop)">
+            <span>Chạm để chọn ảnh — AI thật sẽ phân tích ảnh này</span>
           </template>
-          <template x-if="selectedCrop!=='Chè'">
+          <template x-if="!['Chè','Lúa','Ngô','Sắn','Cà chua'].includes(selectedCrop)">
             <span>Chạm để chọn ảnh — <span class="text-[var(--soil-soft,#FBE9D8)]">model demo cho <span x-text="selectedCrop"></span> chưa train, sẽ dùng kết quả mẫu</span></span>
           </template>
         </p>
@@ -685,7 +691,7 @@ function agriApp(){
     },
 
     // ==== TÍCH HỢP AI THẬT (chỉ Chè có model đã train) ====
-    AI_API_URL: 'http://127.0.0.1:8000/predict',
+    AI_API_URL: 'https://aiplant.girc.edu.vn/predict',
     selectedFile: null,
     previewUrl: null,
     liveResult: null,
@@ -702,12 +708,14 @@ function agriApp(){
       this.liveResult=null;
 
       // Chỉ Chè có model AI thật đã train — các cây khác dùng dữ liệu mẫu
-      if(this.selectedCrop === 'Chè' && this.selectedFile){
+      const cropApiKey = {'Chè':'che', 'Lúa':'lua', 'Ngô':'ngo', 'Sắn':'san', 'Cà chua':'ca_chua'};
+      if(cropApiKey[this.selectedCrop] && this.selectedFile){
         this.scanLabel = 'Đang gửi ảnh tới AI...';
         this.scanProgress = 20;
         try{
           const formData = new FormData();
           formData.append('file', this.selectedFile);
+          formData.append('crop', cropApiKey[this.selectedCrop]);
           const res = await fetch(this.AI_API_URL, { method:'POST', body: formData });
           if(!res.ok) throw new Error('API lỗi: ' + res.status);
           const data = await res.json();
@@ -719,11 +727,16 @@ function agriApp(){
             'Anthracnose':'🍂', 'algal leaf':'🟢', 'bird eye spot':'🍃', 'brown blight':'🍂',
             'gray light':'🍃', 'healthy':'🍃', 'red leaf spot':'🍁', 'white spot':'⚪'
           };
-          const titleCase = (s) => s.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+          const titleCase = (s) => {
+            let clean = s.replace(/^(Cassava___|Tomato___)/, '').replace(/_/g, ' ');
+            return clean.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+          };
           this.liveResult = {
             emoji: diseaseEmojiMap[data.disease_key] || '🍃',
             disease: data.disease_name,
             nameEn: titleCase(data.disease_key),
+            pathogen: data.pathogen || '',
+            conditions: data.conditions || '',
             confidence: data.confidence + '%',
             level: data.level,
             spread: Math.round(data.confidence),
