@@ -62,6 +62,7 @@ function agriApp(){
     },
     closeModal(){
       if(this.pendingFiles.length) this.cancelPhotos();
+      this.stopQrPolling();
       this.dropzoneModalOpen = false;
     },
     handleFileChosen(e){
@@ -90,6 +91,60 @@ function agriApp(){
       this.pendingFiles.forEach(p => URL.revokeObjectURL(p.url));
       this.pendingFiles = [];
       this.modalStep = 'choose';
+    },
+
+    // ==== chế độ thuyết trình: chụp ảnh từ xa bằng điện thoại qua mã QR ====
+    // Bấm liên tiếp 5 lần vào logo (trong 1.5s) để bật/tắt, không hiện chữ để người dùng thường không biết.
+    presenterMode: (typeof localStorage !== 'undefined' && localStorage.getItem('agri_presenter_mode') === '1'),
+    logoClickCount:0,
+    logoClickTimer:null,
+    handleLogoClick(){
+      clearTimeout(this.logoClickTimer);
+      this.logoClickCount++;
+      if(this.logoClickCount >= 5){
+        this.togglePresenterMode();
+        this.logoClickCount = 0;
+      } else {
+        this.logoClickTimer = setTimeout(() => { this.logoClickCount = 0; }, 1500);
+      }
+    },
+    togglePresenterMode(){
+      this.presenterMode = !this.presenterMode;
+      try { localStorage.setItem('agri_presenter_mode', this.presenterMode ? '1' : '0'); } catch(e){}
+    },
+    qrToken:null,
+    qrPollTimer:null,
+    startQrCapture(){
+      this.qrToken = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2));
+      this.modalStep = 'qr';
+      this.$nextTick(() => this.renderQr());
+      this.pollQrStatus();
+    },
+    renderQr(){
+      const el = document.getElementById('qrCaptureBox');
+      if(!el || typeof QRCode === 'undefined') return;
+      el.innerHTML = '';
+      const url = window.location.origin + '/quet-anh/' + this.qrToken;
+      new QRCode(el, { text: url, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
+    },
+    pollQrStatus(){
+      this.stopQrPolling();
+      this.qrPollTimer = setInterval(() => {
+        if(this.modalStep !== 'qr' || !this.qrToken){ this.stopQrPolling(); return; }
+        fetch('/quet-anh/' + this.qrToken + '/status')
+          .then(r => r.json())
+          .then(data => {
+            if(data && data.ready && data.photos && data.photos.length){
+              this.stopQrPolling();
+              this.pendingFiles = data.photos.map(url => ({ file:null, url }));
+              this.modalStep = 'preview';
+            }
+          })
+          .catch(() => {});
+      }, 1500);
+    },
+    stopQrPolling(){
+      if(this.qrPollTimer){ clearInterval(this.qrPollTimer); this.qrPollTimer = null; }
     },
 
     crops:[

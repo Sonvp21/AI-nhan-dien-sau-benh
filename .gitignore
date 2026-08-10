@@ -50,3 +50,6 @@ rice_split/
 kaggle.json
 .kaggle/
 access_token
+
+# Ảnh chụp tạm gửi từ điện thoại qua tính năng quét mã QR (chế độ thuyết trình)
+/public/remote-uploads

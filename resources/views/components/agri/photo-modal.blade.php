@@ -16,7 +16,28 @@
             <span class="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style="background:#f6e2d1;color:#c1440e"><i data-lucide="image" class="w-[18px] h-[18px]"></i></span>
             <span class="text-[14px] 2xl:text-[15px] font-semibold" style="color:#12341d">Chọn ảnh từ thư viện</span>
           </button>
+          <!-- chỉ hiện khi đang bật Chế độ thuyết trình: quét QR để chụp bằng điện thoại khác -->
+          <button x-show="presenterMode" x-cloak @click="startQrCapture()" class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-left transition hover:opacity-85" style="background:#eef2ff;border:1px solid #c7d2fe">
+            <span class="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style="background:#e0e7ff;color:#4338ca"><i data-lucide="qr-code" class="w-[18px] h-[18px]"></i></span>
+            <span class="text-[14px] 2xl:text-[15px] font-semibold" style="color:#12341d">Quét mã QR bằng điện thoại</span>
+          </button>
         </div>
+      </div>
+    </template>
+
+    <!-- bước hiện mã QR, chờ ảnh gửi về từ điện thoại (chỉ dùng ở Chế độ thuyết trình) -->
+    <template x-if="modalStep==='qr'">
+      <div>
+        <p class="text-[16px] 2xl:text-[17px] font-bold mb-1" style="color:#12341d">Quét mã QR để chụp ảnh</p>
+        <p class="text-[12.5px] 2xl:text-[13px] mb-4" style="color:#6b7268">Dùng điện thoại quét mã bên dưới, chụp ảnh và gửi đi. Ảnh sẽ tự động hiện lên đây.</p>
+        <div class="flex justify-center mb-4">
+          <div id="qrCaptureBox" class="p-3 rounded-xl" style="background:#fff;border:1px solid #eceae3"></div>
+        </div>
+        <div class="flex items-center justify-center gap-2 mb-4 text-[12.5px] 2xl:text-[13px]" style="color:#1f6d3c">
+          <i data-lucide="loader-circle" class="w-4 h-4 animate-spin"></i>
+          <span>Đang chờ ảnh từ điện thoại...</span>
+        </div>
+        <button @click="modalStep='choose'; stopQrPolling()" class="w-full px-4 py-2.5 rounded-lg text-[13.5px] font-semibold" style="border:1px solid #c1440e;color:#c1440e">Hủy</button>
       </div>
     </template>
 
