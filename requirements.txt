@@ -1,0 +1,20 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pillow
+
+# Backend chẩn đoán hiện tại (DIAGNOSIS_BACKEND = "gemini" trong app.py) gọi WebAI-to-API
+# (server local, cổng 6969, xem F:\gemini2api) qua SDK OpenAI chuẩn:
+openai
+
+# QUAN TRỌNG: nếu deploy lên VPS/server chỉ có CPU (không có GPU), phải cài
+# torch + torchvision bản CPU-only TRƯỚC khi chạy "pip install -r requirements.txt",
+# nếu không pip sẽ tự tải nhầm bản CUDA (nặng thêm vài GB, server không dùng được):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# Máy Windows có GPU (để train) thì dùng bản cu121 thay vì cpu ở lệnh trên.
+# (torch/torchvision/ultralytics chỉ thực sự CẦN nếu đổi DIAGNOSIS_BACKEND về "local"
+# trong app.py để dùng lại model tự train - nhưng vẫn để sẵn trong requirements.txt
+# để chuyển qua lại không phải cài thêm gì.)
+torch
+torchvision
+ultralytics

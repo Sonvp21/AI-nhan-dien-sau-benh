@@ -53,6 +53,9 @@ access_token
 
 # Ảnh chụp tạm gửi từ điện thoại qua tính năng quét mã QR (chế độ thuyết trình)
 /public/remote-uploads
+# Ảnh tạm phục vụ gọi Gemini (WebAI-to-API tải qua URL), tự xoá ngay sau mỗi lần gọi
+/tmp_images/*
+!/tmp_images/.gitkeep
 # Dataset cho mọi cây - pattern tổng quát, áp dụng cho mọi tên thư mục dataset
 mango_data/
 plantvillage_full/

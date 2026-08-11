@@ -90,11 +90,12 @@
   var CSRF = document.querySelector('meta[name=csrf-token]').content;
 
   // ==== cấu hình giống hệt agri-app.js bên màn hình trình chiếu ====
-  var AI_API_URL = 'https://aiplant.girc.edu.vn/predict';
-  var CROP_API_KEY = {'Chè':'che', 'Lúa':'lua', 'Ngô':'ngo', 'Sắn':'san', 'Cà chua':'ca_chua'};
-  // Ớt, Xoài chưa có model AI thật (chưa có trong CROP_API_KEY) nên khi chọn 2
-  // cây này, bấm Chẩn đoán sẽ không gọi AI mà chỉ gửi ảnh kèm mô hình lên,
-  // màn hình trình chiếu sẽ tự hiển thị dữ liệu mẫu.
+  // Service FastAPI nam chung trong repo Laravel (app.py o thu muc goc). Backend
+  // chan doan HIEN TAI la Gemini (qua WebAI-to-API local) - dung chung cho ca 7
+  // cay, tu nhan dien duoc dung/sai cay (xem crop_mismatch o duoi). Nho doi URL
+  // nay khop voi AI_API_URL trong public/js/agri-app.js sau khi deploy that.
+  var AI_API_URL = 'http://127.0.0.1:8000/predict';
+  var CROP_API_KEY = {'Chè':'che', 'Lúa':'lua', 'Ngô':'ngo', 'Sắn':'san', 'Cà chua':'ca_chua', 'Xoài':'xoai', 'Ớt':'ot'};
   var CROPS = [
     {name:'Chè', img: @json(asset('image/crop-che.png')), icon:'leaf'},
     {name:'Lúa', img: @json(asset('image/crop-lua.png')), icon:'wheat'},
@@ -275,19 +276,41 @@
         return res.json();
       })
       .then(function(data){
+        // Gemini phat hien anh KHONG khop cay da chon -> chan lai, khong hien chan
+        // doan benh (giong het xu ly trong agri-app.js).
+        if(data.crop_mismatch){
+          return {
+            disease:'', nameEn:'', pathogen:'', conditions:'', level:'',
+            steps: [], isLive: true, found: false,
+            cropMismatch: true, detectedCrop: data.detected_crop || '',
+            detections: [], symptoms: [],
+          };
+        }
+
+        var summary = data.summary || {};
+        var found = summary.disease_key !== null && summary.disease_key !== undefined;
+        // Danh sach ten benh khong trung lap, khong kem %, giu thu tu API
+        // (da sap xep theo confidence giam dan)
+        var seen = {};
+        var detections = [];
+        (data.detections || []).forEach(function(d){
+          if(!seen[d.disease_key]){
+            seen[d.disease_key] = true;
+            detections.push({ disease: d.disease_name, nameEn: titleCase(d.disease_key) });
+          }
+        });
         return {
-          disease: data.disease_name,
-          nameEn: titleCase(data.disease_key),
-          pathogen: data.pathogen || '',
-          conditions: data.conditions || '',
-          confidence: data.confidence + '%',
-          level: data.level,
-          steps: data.recommended_steps,
+          disease: summary.disease_name || 'Không xác định',
+          nameEn: found ? titleCase(summary.disease_key) : '',
+          pathogen: summary.pathogen || '',
+          conditions: summary.conditions || '',
+          level: summary.level || 'Trung bình',
+          steps: summary.recommended_steps || [],
           isLive: true,
-          lowConfidence: data.confidence < 50,
-          top3: (data.top3 || []).map(function(t){
-            return { disease: t.disease_name, nameEn: titleCase(t.disease_key), confidence: t.confidence + '%' };
-          }),
+          found: found,
+          cropMismatch: false,
+          detectedCrop: '',
+          detections: detections,
           symptoms: [],
         };
       });
