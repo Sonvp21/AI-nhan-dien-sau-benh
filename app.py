@@ -1,301 +1,157 @@
 """
-FastAPI service - Chan doan benh cay trong bang AI (5 cay: Che, Lua, Ngo, San, Ca chua)
-Nhan anh upload + ten cay -> tra ve JSON: ten benh, tac nhan gay benh, dieu kien phat sinh,
-do tin cay, top-3 du doan, khuyen nghi xu ly
+AgriAI - FastAPI service DUY NHAT chan doan benh cay trong, gom chung vao repo Laravel
+(khong con tach rieng project fastaoi_plant nua, chi chay 1 process/1 deploy).
 
-Chay: uvicorn app:app --reload --port 8000
-Test: mo trinh duyet http://127.0.0.1:8000/docs
+=== BACKEND CHAN DOAN: GEMINI (tam thoi, xem DIAGNOSIS_BACKEND ben duoi) ===
+Hien tai /predict dang dung Gemini (qua WebAI-to-API chay local, xem gemini_diagnosis.py)
+lam backend CHINH cho CA 7 CAY, thay vi cac model YOLO/EfficientNet tu train. Toan bo
+code model cu (crop_configs.py, load model, _predict_detection/_predict_classification)
+VAN GIU NGUYEN o duoi, chi tam thoi khong duoc goi toi - chi can doi
+`DIAGNOSIS_BACKEND = "local"` la quay lai dung model tu train nhu cu, khong can sua gi
+them.
+
+Co che tu dong chon model cho tung cay (khi DIAGNOSIS_BACKEND = "local"), khai bao
+trong crop_configs.py:
+  - Neu cay da co model DETECTION (YOLO12, file .pt trong ai_models/) -> uu tien dung,
+    tra ve ket qua co khoanh vung (bounding box), chinh xac hon.
+  - Neu chua co (file .pt chua ton tai tren may) -> tu dong fallback ve model
+    CLASSIFICATION cu (EfficientNet-B0, file .pth o thu muc goc), phan loai ca anh.
+  - Neu ca hai deu khong co file -> bo qua cay do, in canh bao luc khoi dong (khong crash).
+
+=> Sau nay train xong YOLO cho cay nao, chi can copy file best.pt vao dung duong dan
+   khai bao trong crop_configs.py (vd ai_models/corn_yolo12.pt) roi restart service
+   (`systemctl restart agriai`) la TU DONG chuyen sang dung model moi, khong sua code.
+
+Chay:
+    pip install -r requirements.txt
+    uvicorn app:app --reload --port 8000
+
+Test nhanh: mo trinh duyet http://127.0.0.1:8000/docs
 """
+
+import io
+import os
+import uuid
+from typing import Optional
 
 import torch
 import torch.nn as nn
 from torchvision import transforms, models
 from PIL import Image
-import io
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.concurrency import run_in_threadpool
 
-# ============================================================
-# CAU HINH TUNG CAY - them cay moi chi can them 1 entry vao day
-# ============================================================
-CROP_CONFIGS = {
-    "che": {
-        "model_path": "best_tea_model.pth",
-        "class_names": ['Anthracnose', 'algal leaf', 'bird eye spot', 'brown blight',
-                         'gray light', 'healthy', 'red leaf spot', 'white spot'],
-        "disease_info": {
-            'Anthracnose': {
-                'name_vi': 'Thán thư', 'level': 'Nặng',
-                'pathogen': 'Nấm Colletotrichum camelliae (C. gloeosporioides)',
-                'conditions': 'Thời tiết ấm ẩm (tháng 3-4 và mùa mưa), lá/chồi non bị tổn thương cơ giới',
-                'steps': ['Tiêu hủy triệt để lá, chồi, cành bị bệnh', 'Hạn chế tổn thương cơ giới khi hái búp, đốn tỉa', 'Bón phân cân đối, tạo tán thông thoáng', 'Phun thuốc đặc trị gốc đồng hoặc Carbendazim khi mới chớm bệnh']},
-            'algal leaf': {
-                'name_vi': 'Đốm rong (bệnh tảo)', 'level': 'Trung bình',
-                'pathogen': 'Tảo Cephaleuros virescens',
-                'conditions': 'Nương chè rậm rạp, thiếu chăm sóc, cây già cỗi, mùa mưa kéo dài',
-                'steps': ['Không trồng quá dày, chăm sóc cây sinh trưởng khỏe', 'Tỉa bỏ cành lá già bệnh nặng, tiêu hủy', 'Quét thuốc gốc đồng đậm đặc lên vùng bệnh trên thân/cành']},
-            'bird eye spot': {
-                'name_vi': 'Đốm mắt cua', 'level': 'Trung bình',
-                'pathogen': 'Nấm Cercospora theae (Pseudocercospora theae)',
-                'conditions': 'Mưa nhiều, ẩm độ cao, nương chè rậm rạp thiếu thông thoáng',
-                'steps': ['Đốn tỉa định kỳ tạo tán thông thoáng', 'Thu dọn lá rụng, tàn dư sau thu hái/đốn', 'Phun thuốc gốc đồng hoặc Antracol 70WP khi mới xuất hiện']},
-            'brown blight': {
-                'name_vi': 'Đốm nâu (chè)', 'level': 'Nặng',
-                'pathogen': 'Nấm Colletotrichum camelliae, đôi khi kết hợp Pestalotiopsis theae',
-                'conditions': 'Mùa mưa, nương chè rậm rạp chăm sóc kém, ẩm độ cao kéo dài',
-                'steps': ['Cắt bỏ, tiêu hủy lá cành bệnh nặng', 'Đốn tỉa tạo thông thoáng, tránh trồng quá dày', 'Hạn chế bón thừa đạm mùa mưa, tăng kali', 'Phun Antracol 70WP hoặc thuốc gốc đồng sau khi hái']},
-            'gray light': {
-                'name_vi': 'Đốm xám', 'level': 'Trung bình',
-                'pathogen': 'Nấm Pestalotiopsis (Pseudopestalotiopsis) theae',
-                'conditions': 'Mưa ẩm, nhiệt độ 25-28°C, mạnh nhất tháng 7-10, vết thương cơ giới do hái chè',
-                'steps': ['Bón phân cân đối, tưới tiêu hợp lý', 'Cày vùi lá cành sau đốn (ép xanh) diệt nguồn bệnh', 'Hái chè đúng kỹ thuật hạn chế vết thương', 'Phun Amtech 100EW hoặc thuốc gốc đồng']},
-            'healthy': {
-                'name_vi': 'Cây khỏe mạnh', 'level': 'Nhẹ',
-                'pathogen': 'Không có tác nhân gây bệnh',
-                'conditions': 'Cây sinh trưởng bình thường, không có dấu hiệu bệnh',
-                'steps': ['Duy trì chế độ chăm sóc hiện tại', 'Kiểm tra định kỳ 2 tuần/lần vào mùa mưa', 'Bón phân cân đối NPK theo giai đoạn sinh trưởng']},
-            'red leaf spot': {
-                'name_vi': 'Đốm lá đỏ', 'level': 'Trung bình',
-                'pathogen': 'Nấm Phoma theicola hoặc Cercospora theae',
-                'conditions': 'Nương chè già cỗi, đất nghèo dinh dưỡng, thiếu kali, thoát nước kém',
-                'steps': ['Bón phân cân đối, tăng kali và phân hữu cơ', 'Đốn tạo tán hợp lý, loại bỏ cành già', 'Phun thuốc gốc đồng hoặc thuốc trừ nấm phổ rộng']},
-            'white spot': {
-                'name_vi': 'Đốm trắng', 'level': 'Trung bình',
-                'pathogen': 'Nấm Phyllosticta theicola hoặc Pseudocercospora sp.',
-                'conditions': 'Nương chè rậm rạp, thiếu ánh sáng, độ ẩm cao, thông thoáng kém',
-                'steps': ['Đốn tỉa tạo tán thông thoáng', 'Hái chè đúng kỹ thuật, đúng lứa', 'Thu gom tiêu hủy lá bệnh rụng', 'Phun thuốc gốc đồng hoặc Mancozeb']},
-        }
-    },
-    "lua": {
-        "model_path": "best_rice_model.pth",
-        "class_names": ['Bacterialblight', 'Blast', 'Brownspot', 'Tungro'],
-        "disease_info": {
-            'Bacterialblight': {
-                'name_vi': 'Bạc lá', 'level': 'Nặng',
-                'pathogen': 'Vi khuẩn Xanthomonas oryzae',
-                'conditions': 'Mưa lớn, gió bão, ruộng bón thừa đạm, cây bị tổn thương cơ giới',
-                'steps': ['Ưu tiên giống lúa kháng bệnh', 'Thu gom tiêu hủy tàn dư cây bệnh sau thu hoạch', 'Bón phân cân đối, không thừa đạm, điều tiết nước hợp lý', 'Phun phòng gốc Đồng hydroxide hoặc Oxolinic acid trước/sau mưa giông']},
-            'Blast': {
-                'name_vi': 'Đạo ôn lá', 'level': 'Nặng',
-                'pathogen': 'Nấm Pyricularia oryzae (Magnaporthe oryzae)',
-                'conditions': 'Ẩm độ cao (>93%), sương mù, mưa phùn kéo dài, nhiệt độ 25-28°C, bón thừa đạm',
-                'steps': ['Luân canh, dùng giống ít mẫn cảm với đạo ôn', 'Bón NPK cân đối, không thừa đạm, tăng kali', 'Phun thuốc khi tỷ lệ lá bệnh đạt khoảng 10%', 'Theo dõi lại sau 5 ngày, so sánh mức độ lây lan']},
-            'Brownspot': {
-                'name_vi': 'Đốm nâu (lúa)', 'level': 'Trung bình',
-                'pathogen': 'Nấm Helminthosporium oryzae (Bipolaris oryzae), Curvularia lunata',
-                'conditions': 'Đất nghèo dinh dưỡng (đất phèn, đất cát), ruộng thiếu kali, gieo sạ dày',
-                'steps': ['Vệ sinh đồng ruộng, xử lý rơm rạ bằng chế phẩm vi sinh', 'Gieo sạ mật độ hợp lý (100-120 kg giống/ha)', 'Bón phân cân đối, bổ sung lân và kali', 'Phun thuốc nhóm Triazole hoặc Carbendazim khi chớm bệnh']},
-            'Tungro': {
-                'name_vi': 'Vàng lùn - Lùn xoắn lá', 'level': 'Nặng',
-                'pathogen': 'Phức hợp virus (Tungro, virus Lùn lúa cỏ, Lùn xoắn lá) do rầy nâu/rầy xanh truyền',
-                'conditions': 'Mật độ rầy môi giới cao, gieo sạ không đồng loạt tạo nguồn thức ăn liên tục cho rầy',
-                'steps': ['Theo dõi mật độ rầy, phun trừ rầy khi đạt ~3 con/dảnh trong 40 ngày đầu', 'Gieo sạ đồng loạt, né rầy theo khuyến cáo địa phương', 'Nhổ bỏ tiêu hủy sớm cây có triệu chứng bệnh', 'Ưu tiên giống kháng/ít nhiễm rầy']},
-        }
-    },
-    "ngo": {
-        "model_path": "best_corn_model.pth",
-        "class_names": ['Blight', 'Common_Rust', 'Gray_Leaf_Spot', 'Healthy'],
-        "disease_info": {
-            'Blight': {
-                'name_vi': 'Đốm lá lớn (khô vằn lá)', 'level': 'Nặng',
-                'pathogen': 'Nấm Exserohilum turcicum',
-                'conditions': 'Nóng ẩm, mưa nhiều, nhiệt độ 20-27°C, thường tăng nhanh từ giai đoạn trổ cờ',
-                'steps': ['Ưu tiên giống ngô lai kháng bệnh đốm lá lớn', 'Thu gom tiêu hủy tàn dư thân lá sau thu hoạch', 'Trồng mật độ vừa phải, bón phân cân đối, luân canh', 'Phun thuốc gốc Mancozeb hoặc Propiconazole khi chớm bệnh']},
-            'Common_Rust': {
-                'name_vi': 'Gỉ sắt', 'level': 'Trung bình',
-                'pathogen': 'Nấm Puccinia sorghi (Puccinia maydis)',
-                'conditions': 'Thời tiết mát ẩm, nhiệt độ 17-18°C, ẩm độ trên 95%, có sương hoặc mưa kéo dài',
-                'steps': ['Chọn giống kháng hoặc ít nhiễm bệnh gỉ sắt', 'Trồng đúng thời vụ, mật độ hợp lý, luân canh', 'Thu gom tiêu hủy tàn dư cây bệnh', 'Phun thuốc gốc Đồng hoặc Dithane/Anvil/Kumulus khi chớm bệnh']},
-            'Gray_Leaf_Spot': {
-                'name_vi': 'Đốm xám lá', 'level': 'Trung bình',
-                'pathogen': 'Nấm Cercospora zeae-maydis (C. zeina)',
-                'conditions': 'Ấm ẩm, nhiệt độ 25-35°C, ẩm độ cao về đêm, ruộng trồng dày, độc canh nhiều vụ',
-                'steps': ['Luân canh với cây khác họ ít nhất 1 vụ', 'Cày vùi hoặc tiêu hủy triệt để tàn dư thân lá', 'Ưu tiên giống ngô lai kháng bệnh', 'Phun phòng sớm bằng Azoxystrobin, Mancozeb hoặc Propiconazole']},
-            'Healthy': {
-                'name_vi': 'Cây khỏe mạnh', 'level': 'Nhẹ',
-                'pathogen': 'Không có tác nhân gây bệnh',
-                'conditions': 'Cây sinh trưởng bình thường, không có dấu hiệu bệnh',
-                'steps': ['Duy trì chế độ chăm sóc hiện tại', 'Thăm đồng thường xuyên, đặc biệt trước/trong trổ cờ - phun râu', 'Bón phân cân đối N-P-K theo giai đoạn sinh trưởng']},
-        }
-    },
-    "san": {
-        "model_path": "best_cassava_model.pth",
-        "class_names": ['Cassava___bacterial_blight', 'Cassava___brown_streak_disease',
-                         'Cassava___green_mottle', 'Cassava___healthy', 'Cassava___mosaic_disease'],
-        "disease_info": {
-            'Cassava___bacterial_blight': {
-                'name_vi': 'Cháy lá vi khuẩn', 'level': 'Nặng',
-                'pathogen': 'Vi khuẩn Xanthomonas axonopodis (X. phaseoli) pv. manihotis',
-                'conditions': 'Mưa nhiều, ẩm độ cao, dùng hom giống bệnh, cây bị tổn thương cơ giới',
-                'steps': ['Chọn hom giống sạch bệnh, không lấy từ vùng đang có dịch', 'Tiêu hủy triệt để tàn dư cây bệnh, khử trùng dụng cụ cắt hom', 'Luân canh, không trồng sắn liên tục nhiều vụ trên cùng đất', 'Nhổ bỏ tiêu hủy sớm cây có triệu chứng']},
-            'Cassava___brown_streak_disease': {
-                'name_vi': 'Đốm/Sọc nâu (CBSD)', 'level': 'Nặng',
-                'pathogen': 'Virus CBSV/UCBSV, lây qua hom giống và bọ phấn trắng (Bemisia tabaci)',
-                'conditions': 'Mật độ bọ phấn trắng cao, dùng hom giống không rõ nguồn gốc',
-                'steps': ['Chỉ lấy hom giống từ ruộng đã kiểm tra không nhiễm virus', 'Theo dõi và phun trừ bọ phấn trắng khi cần thiết', 'Nhổ bỏ tiêu hủy sớm cây nghi ngờ nhiễm bệnh', 'Ưu tiên giống có khả năng chống chịu CBSD nếu có']},
-            'Cassava___green_mottle': {
-                'name_vi': 'Khảm xanh', 'level': 'Trung bình',
-                'pathogen': 'Virus Cassava green mottle virus (CGMV)',
-                'conditions': 'Sử dụng hom giống nhiễm bệnh, triệu chứng rõ sau trồng 2-5 tháng',
-                'steps': ['Chọn hom giống sạch bệnh (biện pháp quan trọng nhất)', 'Nhổ bỏ, đốt tiêu hủy ngay khi phát hiện triệu chứng', 'Hạn chế vận chuyển hom giống từ vùng có dịch']},
-            'Cassava___healthy': {
-                'name_vi': 'Cây khỏe mạnh', 'level': 'Nhẹ',
-                'pathogen': 'Không có tác nhân gây bệnh',
-                'conditions': 'Cây sinh trưởng bình thường, không có dấu hiệu bệnh',
-                'steps': ['Duy trì chế độ chăm sóc hiện tại', 'Chọn hom giống sạch bệnh cho vụ sau', 'Theo dõi định kỳ phát hiện sớm bất thường']},
-            'Cassava___mosaic_disease': {
-                'name_vi': 'Khảm lá sắn', 'level': 'Nặng',
-                'pathogen': 'Sri Lanka Cassava Mosaic Virus (Begomovirus), lây qua hom giống và bọ phấn trắng',
-                'conditions': 'Mật độ bọ phấn trắng cao, hom giống không rõ nguồn gốc từ vùng có dịch',
-                'steps': ['Dùng giống kháng và hom giống sạch bệnh', 'Không vận chuyển hom/thân từ vùng dịch sang vùng chưa nhiễm', 'Diệt trừ bọ phấn trắng bằng Nitenpyram+Pymetrozine hoặc Dinotefuran', 'Tiêu hủy cây bệnh; ruộng nhiễm >70% cần tiêu hủy toàn bộ theo hướng dẫn BVTV']},
-        }
-    },
-    "ca_chua": {
-        "model_path": "best_tomato_model.pth",
-        "class_names": ['Tomato___Bacterial_spot', 'Tomato___Early_blight', 'Tomato___Late_blight',
-                         'Tomato___Leaf_Mold', 'Tomato___Septoria_leaf_spot',
-                         'Tomato___Spider_mites Two-spotted_spider_mite', 'Tomato___Target_Spot',
-                         'Tomato___Tomato_mosaic_virus', 'Tomato___Tomato_Yellow_Leaf_Curl_Virus',
-                         'Tomato___healthy'],
-        "disease_info": {
-            'Tomato___Bacterial_spot': {
-                'name_vi': 'Đốm vi khuẩn', 'level': 'Nặng',
-                'pathogen': 'Vi khuẩn Xanthomonas spp. (X. campestris pv. vesicatoria...)',
-                'conditions': 'Nhiệt độ 24-30°C, ẩm độ >80%, mùa mưa (tháng 5-10), mưa xen nắng',
-                'steps': ['Xử lý hạt giống trong nước ấm 50°C/30 phút hoặc thuốc trừ khuẩn', 'Phun phòng khi cây ra lá non (15-20 ngày sau trồng)', 'Luân canh, tránh tưới làm bắn đất lên lá', 'Phun trị khi 5-10% lá/quả có đốm, lặp lại 2-3 lần cách 5-7 ngày']},
-            'Tomato___Early_blight': {
-                'name_vi': 'Đốm vòng (dịch sớm)', 'level': 'Trung bình',
-                'pathogen': 'Nấm Alternaria solani',
-                'conditions': 'Ẩm ướt, nhiệt độ ấm, cây thiếu dinh dưỡng, thường tấn công lá già trước',
-                'steps': ['Luân canh với cây khác họ cà', 'Tỉa bỏ lá già, lá bệnh phía dưới gốc', 'Bón phân cân đối giúp cây khỏe', 'Phun thuốc gốc Mancozeb hoặc Chlorothalonil khi mới xuất hiện']},
-            'Tomato___Late_blight': {
-                'name_vi': 'Mốc sương (dịch muộn)', 'level': 'Nặng',
-                'pathogen': 'Nấm Phytophthora infestans',
-                'conditions': 'Ẩm độ cao, nhiệt độ 18-22°C, mưa nắng xen kẽ, sương mù, đất trũng thoát nước kém',
-                'steps': ['Thu dọn sạch tàn dư cây bệnh sau vụ', 'Tỉa cành tạo thoáng, giảm ẩm độ trong vườn', 'Ưu tiên giống kháng Phytophthora infestans', 'Phun Mancozeb, Metalaxyl hoặc Tebuconazole ngay khi chớm bệnh - đây là bệnh cực nguy hiểm, có thể làm chết cả ruộng nhanh chóng']},
-            'Tomato___Leaf_Mold': {
-                'name_vi': 'Mốc lá', 'level': 'Trung bình',
-                'pathogen': 'Nấm Passalora fulva (Cladosporium fulvum)',
-                'conditions': 'Ẩm độ không khí trên 85%, phổ biến ở nhà màng/nhà kính thiếu thông gió',
-                'steps': ['Đảm bảo thông gió tốt trong nhà màng/nhà kính', 'Tránh tưới nước lên lá vào chiều tối', 'Tỉa bỏ lá già gần gốc, lá bệnh', 'Phun thuốc gốc đồng khi bệnh mới xuất hiện']},
-            'Tomato___Septoria_leaf_spot': {
-                'name_vi': 'Đốm lá Septoria', 'level': 'Trung bình',
-                'pathogen': 'Nấm Septoria lycopersici',
-                'conditions': 'Ẩm độ cao, nhiệt độ 20-25°C, thường xuất hiện giai đoạn giữa-cuối vụ, từ lá già gần gốc',
-                'steps': ['Ưu tiên giống kháng bệnh đốm lá', 'Tỉa bỏ, tiêu hủy lá già, lá bệnh phía dưới gốc', 'Dọn sạch tàn dư sau thu hoạch', 'Phun thuốc gốc đồng hoặc Mancozeb khi mới xuất hiện']},
-            'Tomato___Spider_mites Two-spotted_spider_mite': {
-                'name_vi': 'Nhện đỏ hai chấm', 'level': 'Trung bình',
-                'pathogen': 'Nhện Tetranychus urticae (dịch hại, không phải bệnh do vi sinh vật)',
-                'conditions': 'Thời tiết khô nóng, mật độ trồng dày, thiếu thiên địch hoặc lạm dụng thuốc trừ sâu phổ rộng',
-                'steps': ['Hạn chế phun thuốc phổ rộng để bảo tồn thiên địch (bọ rùa)', 'Phun nước mạnh vào mặt dưới lá khi mật độ còn thấp', 'Tưới đủ ẩm trong mùa khô hạn', 'Dùng thuốc trừ nhện đặc hiệu khi mật độ vượt ngưỡng, luân phiên hoạt chất']},
-            'Tomato___Target_Spot': {
-                'name_vi': 'Đốm mắt tiêu', 'level': 'Trung bình',
-                'pathogen': 'Nấm Corynespora cassiicola',
-                'conditions': 'Nóng ẩm, nhiệt độ 20-24°C, mưa nhiều, vườn trồng rậm rạp thiếu thông thoáng',
-                'steps': ['Luân canh, vệ sinh vườn, tiêu hủy tàn dư lá bệnh', 'Trồng mật độ hợp lý, tỉa lá già tạo thoáng', 'Phun thuốc gốc đồng hoặc Chlorothalonil khi mới xuất hiện']},
-            'Tomato___Tomato_mosaic_virus': {
-                'name_vi': 'Khảm virus', 'level': 'Nặng',
-                'pathogen': 'Virus Tomato mosaic virus (ToMV), thuộc nhóm Tobamovirus',
-                'conditions': 'Vệ sinh dụng cụ kém, mật độ trồng dày, hạt giống nhiễm virus, tiếp xúc cơ giới khi chăm sóc',
-                'steps': ['Dùng hạt giống đã qua xử lý, nguồn gốc rõ ràng', 'Khử trùng tay, dao kéo, dụng cụ tỉa cành giữa các cây', 'Nhổ bỏ tiêu hủy sớm cây có triệu chứng khảm nặng', 'Luân canh với cây khác họ cà (Solanaceae)']},
-            'Tomato___Tomato_Yellow_Leaf_Curl_Virus': {
-                'name_vi': 'Xoăn vàng lá', 'level': 'Nặng',
-                'pathogen': 'Virus Tomato Yellow Leaf Curl Virus (TYLCV), lây qua bọ phấn trắng Bemisia tabaci',
-                'conditions': 'Vụ cà chua sớm và vụ xuân hè - thời điểm mật độ bọ phấn trắng cao',
-                'steps': ['Phun thuốc trừ bọ phấn trắng (môi giới truyền bệnh)', 'Dùng lưới chắn côn trùng ở vườn ươm và cây con', 'Có thể dùng thiên địch (ong ký sinh Encarsia formosa) hoặc dầu neem', 'Nhổ bỏ tiêu hủy sớm cây có triệu chứng xoăn vàng lá nặng']},
-            'Tomato___healthy': {
-                'name_vi': 'Cây khỏe mạnh', 'level': 'Nhẹ',
-                'pathogen': 'Không có tác nhân gây bệnh',
-                'conditions': 'Cây sinh trưởng bình thường, không có dấu hiệu bệnh',
-                'steps': ['Duy trì chế độ chăm sóc hiện tại', 'Thăm vườn thường xuyên để phát hiện sớm bất thường', 'Bón phân cân đối, đảm bảo thoát nước tốt mùa mưa']},
-        }
-    },
-    "xoai": {
-        "model_path": "best_mango_model.pth",
-        "class_names": ['Anthracnose', 'Bacterial Canker', 'Cutting Weevil', 'Die Back',
-                         'Gall Midge', 'Healthy', 'Powdery Mildew', 'Sooty Mould'],
-        "disease_info": {
-            'Anthracnose': {'name_vi': 'Thán thư', 'level': 'Nặng',
-                'pathogen': 'Nấm Colletotrichum gloeosporioides',
-                'conditions': 'Ẩm độ cao, mưa nhiều, thường phát sinh mạnh vào mùa mưa và giai đoạn ra hoa/đậu quả',
-                'steps': ['Tỉa cành tạo tán thông thoáng, giảm ẩm độ trong tán', 'Phun thuốc gốc đồng hoặc Mancozeb định kỳ mùa mưa', 'Thu gom, tiêu hủy lá và quả rụng bị bệnh']},
-            'Bacterial Canker': {'name_vi': 'Loét vi khuẩn', 'level': 'Nặng',
-                'pathogen': 'Vi khuẩn Xanthomonas campestris pv. mangiferaeindicae',
-                'conditions': 'Mưa nhiều kèm gió mạnh, vết thương cơ giới trên lá/cành/quả',
-                'steps': ['Cắt bỏ, tiêu hủy cành lá quả bị loét nặng', 'Phun thuốc gốc đồng phòng bệnh trước mùa mưa', 'Khử trùng dụng cụ cắt tỉa giữa các cây']},
-            'Cutting Weevil': {'name_vi': 'Sâu đục cành (mọt cắt cành)', 'level': 'Trung bình',
-                'pathogen': 'Côn trùng gây hại (không phải nấm/khuẩn) - Cryptorhynchus sp.',
-                'conditions': 'Vườn rậm rạp, cành lá già, mật độ trồng dày',
-                'steps': ['Cắt bỏ, tiêu hủy cành bị đục ngay khi phát hiện', 'Vệ sinh vườn, tỉa cành tạo thông thoáng', 'Dùng thuốc trừ sâu đặc hiệu khi mật độ cao']},
-            'Die Back': {'name_vi': 'Khô cành (chết ngược cành)', 'level': 'Nặng',
-                'pathogen': 'Nấm Lasiodiplodia theobromae (Botryodiplodia)',
-                'conditions': 'Cây suy yếu, tổn thương sau thu hoạch/cắt tỉa, thời tiết khô hạn kéo dài',
-                'steps': ['Cắt bỏ cành khô, tiêu hủy xa vườn', 'Quét thuốc gốc đồng lên vết cắt', 'Bón phân cân đối tăng sức đề kháng cho cây']},
-            'Gall Midge': {'name_vi': 'Sâu tạo nốt sần (muỗi năn)', 'level': 'Trung bình',
-                'pathogen': 'Côn trùng gây hại - Procontarinia sp. (muỗi năn xoài)',
-                'conditions': 'Giai đoạn ra lá non, đọt non, mật độ vườn dày',
-                'steps': ['Cắt tỉa, tiêu hủy lá non bị tạo nốt sần', 'Phun thuốc trừ sâu khi đọt non mới nhú', 'Theo dõi vườn định kỳ giai đoạn ra đọt']},
-            'Healthy': {'name_vi': 'Cây khỏe mạnh', 'level': 'Nhẹ',
-                'pathogen': 'Không có tác nhân gây bệnh',
-                'conditions': 'Cây sinh trưởng bình thường, không có dấu hiệu bệnh',
-                'steps': ['Duy trì chế độ chăm sóc hiện tại', 'Kiểm tra định kỳ, đặc biệt giai đoạn ra hoa/đậu quả', 'Bón phân cân đối theo giai đoạn sinh trưởng']},
-            'Powdery Mildew': {'name_vi': 'Phấn trắng', 'level': 'Trung bình',
-                'pathogen': 'Nấm Oidium mangiferae',
-                'conditions': 'Thời tiết mát, ẩm độ cao vào sáng sớm, thường gây hại nặng trên hoa và quả non',
-                'steps': ['Phun lưu huỳnh hoặc thuốc gốc lưu huỳnh khi cây ra hoa', 'Tỉa cành tạo tán thông thoáng, đón nắng', 'Theo dõi kỹ giai đoạn ra hoa - đậu quả non']},
-            'Sooty Mould': {'name_vi': 'Bồ hóng (muội đen)', 'level': 'Nhẹ',
-                'pathogen': 'Nấm hoại sinh (Capnodium sp.) phát triển trên dịch mật của rệp/rầy',
-                'conditions': 'Vườn có rệp sáp/rầy mềm gây hại tiết dịch mật tạo môi trường cho nấm phát triển',
-                'steps': ['Diệt trừ rệp/rầy - nguồn gốc gây bệnh', 'Rửa lá bằng nước xà phòng loãng khi mật độ nhẹ', 'Phun thuốc trừ côn trùng chích hút định kỳ']},
-        }
-    },
-    "ot": {
-        "model_path": "best_pepper_model.pth",
-        "class_names": ['Pepper,_bell___Bacterial_spot', 'Pepper,_bell___healthy'],
-        "disease_info": {
-            'Pepper,_bell___Bacterial_spot': {'name_vi': 'Đốm vi khuẩn', 'level': 'Nặng',
-                'pathogen': 'Vi khuẩn Xanthomonas campestris pv. vesicatoria',
-                'conditions': 'Nhiệt độ ấm, ẩm độ cao, mưa nhiều, tưới phun làm bắn nước lên lá',
-                'steps': ['Dùng hạt giống sạch bệnh, xử lý hạt trước khi gieo', 'Luân canh, tránh tưới làm bắn đất/nước lên lá', 'Phun thuốc gốc đồng khi mới xuất hiện triệu chứng', 'Tiêu hủy tàn dư cây bệnh sau thu hoạch']},
-            'Pepper,_bell___healthy': {'name_vi': 'Cây khỏe mạnh', 'level': 'Nhẹ',
-                'pathogen': 'Không có tác nhân gây bệnh',
-                'conditions': 'Cây sinh trưởng bình thường, không có dấu hiệu bệnh',
-                'steps': ['Duy trì chế độ chăm sóc hiện tại', 'Kiểm tra định kỳ phát hiện sớm bất thường', 'Bón phân cân đối, đảm bảo thoát nước tốt']},
-        }
-    },
-}
+from crop_configs import CROP_CONFIGS
+from gemini_diagnosis import diagnose_with_gemini, GeminiDiagnosisError, CROP_VI_NAMES
 
+# ==== CONG TAC CHON BACKEND CHAN DOAN ====
+# "gemini" = dung Gemini qua WebAI-to-API local (HIEN TAI, cho ca 7 cay, tu nhan dien
+#            luon dung/sai cay) | "local" = quay lai model YOLO/EfficientNet tu train
+#            (chi Che/Lua/Ot/Ngo/San/Ca chua co model, Xoai chua co).
+# Doi dong nay la chuyen qua lai duoc ngay, khong can sua gi khac trong file.
+DIAGNOSIS_BACKEND = "gemini"
+
+# WebAI-to-API can 1 URL CONG KHAI THAT de tu tai anh ve roi moi goi cho Gemini
+# (gemini-webapi khong tai duoc dia chi noi bo nhu host.docker.internal/127.0.0.1,
+# va cung khong on dinh qua "quick tunnel" mien phi cua Cloudflare/ngrok - da thu
+# va bi loi that su, xem SETUP_NOTES.md). Dang dung Named Tunnel (Cloudflare Zero
+# Trust, gan voi domain rieng girc-ai.com) - on dinh, khong co trang canh bao/gioi
+# han nhu quick tunnel hay ngrok free.
+#
+# - Dang TEST LOCAL: cloudflared chay nen (`cloudflared.exe service install <token>`)
+#   route "predict.girc-ai.com" -> "localhost:8000", domain CO DINH, khong doi.
+# - Khi DEPLOY THAT len VPS: doi thanh domain that, vd "https://aiplant.girc.edu.vn"
+#   (khong can tunnel nua vi da la URL cong khai san tren server).
+# Doc tu bien moi truong LOCAL_IMAGE_BASE_URL neu co (dat trong file service systemd
+# tren VPS), khong co thi fallback ve domain tunnel dung khi chay local - nho vay
+# file nay dung chung duoc ca 2 noi, khong can sua code moi lan deploy.
+LOCAL_IMAGE_BASE_URL = os.environ.get("LOCAL_IMAGE_BASE_URL", "https://predict.girc-ai.com")
+TMP_IMAGES_DIR = "tmp_images"
+os.makedirs(TMP_IMAGES_DIR, exist_ok=True)
+
+# TAM THOI de True de dieu tra loi "Failed to download" - anh tam se KHONG bi xoa
+# sau moi lan goi, de test tay URL tu trong container WebAI-to-API. Nho doi lai
+# False sau khi xong, khong thi tmp_images/ se day dan theo thoi gian.
+# -> Da tim ra nguyen nhan that (deadlock event loop, xem run_in_threadpool ben
+#    duoi), doi lai False de tmp_images/ khong day dan nua.
+DEBUG_KEEP_TMP_IMAGES = False
+
+DEFAULT_CONF = 0.25
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# ==== LOAD TAT CA MODEL LUC KHOI DONG (chi 1 lan) ====
-loaded_models = {}
-
-def load_model(config):
-    model = models.efficientnet_b0(weights=None)
-    model.classifier[1] = nn.Linear(model.classifier[1].in_features, len(config["class_names"]))
-    model.load_state_dict(torch.load(config["model_path"], map_location=DEVICE))
-    model.to(DEVICE)
-    model.eval()
-    return model
-
-print(f"Dang tai cac model... Chay tren: {DEVICE}")
-for crop_key, config in CROP_CONFIGS.items():
-    try:
-        loaded_models[crop_key] = load_model(config)
-        print(f"  -> Da tai model cho '{crop_key}' ({config['model_path']})")
-    except FileNotFoundError:
-        print(f"  -> CANH BAO: khong tim thay {config['model_path']}, bo qua cay '{crop_key}'")
-print("San sang phuc vu.")
-
-transform = transforms.Compose([
+CLASSIFY_TRANSFORM = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
 ])
 
+
+def _load_classification_model(sub_config):
+    model = models.efficientnet_b0(weights=None)
+    model.classifier[1] = nn.Linear(model.classifier[1].in_features, len(sub_config["class_names"]))
+    model.load_state_dict(torch.load(sub_config["model_path"], map_location=DEVICE))
+    model.to(DEVICE)
+    model.eval()
+    return model
+
+
+def _load_detection_model(sub_config):
+    # import cho trong ham de neu may nao chua cai ultralytics van chay duoc
+    # phan classification (vd server cu chua kip cai them thu vien).
+    from ultralytics import YOLO
+    return YOLO(sub_config["model_path"])
+
+
+# ==== LOAD MODEL CHO TUNG CAY LUC KHOI DONG (chi 1 lan), TU DONG UU TIEN DETECTION ====
+# Chi thuc su tai model (.pth/.pt, ton bo nhieu RAM/VRAM) khi DIAGNOSIS_BACKEND = "local".
+# Khi dang dung Gemini (mac dinh) thi bo qua het buoc nay - loaded_models se rong,
+# giu code nguyen ven de bat lai "local" la chay ngay khong can sua gi.
+loaded_models = {}
+
+if DIAGNOSIS_BACKEND == "local":
+    print(f"Dang tai model cho tung cay... Chay tren: {DEVICE}")
+    for crop_key, cfg in CROP_CONFIGS.items():
+        detection_cfg = cfg.get("detection")
+        classification_cfg = cfg.get("classification")
+
+        if detection_cfg and os.path.exists(detection_cfg["model_path"]):
+            try:
+                loaded_models[crop_key] = {
+                    "type": "detection",
+                    "model": _load_detection_model(detection_cfg),
+                    "config": detection_cfg,
+                }
+                print(f"  -> '{crop_key}': dung model DETECTION ({detection_cfg['model_path']})")
+                continue
+            except Exception as e:
+                print(f"  -> CANH BAO: loi tai model detection cho '{crop_key}': {e}, thu fallback classification...")
+
+        if classification_cfg and os.path.exists(classification_cfg["model_path"]):
+            try:
+                loaded_models[crop_key] = {
+                    "type": "classification",
+                    "model": _load_classification_model(classification_cfg),
+                    "config": classification_cfg,
+                }
+                print(f"  -> '{crop_key}': dung model CLASSIFICATION ({classification_cfg['model_path']})")
+                continue
+            except Exception as e:
+                print(f"  -> CANH BAO: loi tai model classification cho '{crop_key}': {e}, bo qua cay nay")
+                continue
+
+        print(f"  -> CANH BAO: cay '{crop_key}' chua co model nao (detection lan classification), bo qua")
+else:
+    print(f"DIAGNOSIS_BACKEND = 'gemini' -> bo qua buoc tai model local (.pth/.pt), "
+          f"dung Gemini qua WebAI-to-API cho ca 7 cay.")
+
+print("San sang phuc vu.\n")
+
+
 # ==== FASTAPI APP ====
-app = FastAPI(title="AgriAI - Multi-Crop Disease Detection API")
+app = FastAPI(title="AgriAI - Multi-Crop Disease Detection API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -304,66 +160,228 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve anh upload tam thoi qua URL that, de WebAI-to-API (chay trong Docker) tai
+# ve duoc va dua cho Gemini xem (Gemini/gemini-webapi khong nhan base64 truc tiep
+# qua duong nay, phai la 1 URL http that no tu fetch). Moi anh bi xoa ngay sau khi
+# goi Gemini xong trong ham predict() ben duoi, thu muc nay chi chua anh tam vai giay.
+app.mount("/tmp-images", StaticFiles(directory=TMP_IMAGES_DIR), name="tmp-images")
+
 
 @app.get("/")
 def root():
+    if DIAGNOSIS_BACKEND == "gemini":
+        return {
+            "status": "ok",
+            "message": "AgriAI dang chay - backend chan doan: GEMINI (qua WebAI-to-API local)",
+            "diagnosis_backend": "gemini",
+            "available_crops": list(CROP_VI_NAMES.keys()),
+        }
     return {
         "status": "ok",
-        "message": "AgriAI Multi-Crop Disease Detection API dang chay",
-        "available_crops": list(loaded_models.keys()),
+        "message": "AgriAI Multi-Crop Disease API dang chay (tu dong chon detection/classification theo cay)",
+        "diagnosis_backend": "local",
+        "available_crops": {
+            crop_key: entry["type"] for crop_key, entry in loaded_models.items()
+        },
     }
 
 
-@app.post("/predict")
-async def predict(file: UploadFile = File(...), crop: str = Form(...)):
-    crop = crop.lower()
+def _predict_detection(entry, image, conf):
+    model = entry["model"]
+    disease_info = entry["config"]["disease_info"]
 
-    if crop not in loaded_models:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cay '{crop}' chua co model. Cac cay ho tro: {list(loaded_models.keys())}"
-        )
+    results = model.predict(image, conf=conf, verbose=False)
+    r = results[0]
 
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File phai la anh (jpg, png...)")
+    detections = []
+    for box in r.boxes:
+        cls_id = int(box.cls[0])
+        cls_name = model.names[cls_id]
+        confidence = float(box.conf[0]) * 100
+        x1, y1, x2, y2 = [float(v) for v in box.xyxy[0]]
 
-    try:
-        contents = await file.read()
-        image = Image.open(io.BytesIO(contents)).convert("RGB")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Khong doc duoc anh, file co the bi loi")
+        info = disease_info.get(cls_name, {})
+        detections.append({
+            "disease_key": cls_name,
+            "disease_name": info.get("name_vi", cls_name),
+            "confidence": round(confidence, 2),
+            "level": info.get("level", ""),
+            "bbox": {"x1": round(x1, 1), "y1": round(y1, 1), "x2": round(x2, 1), "y2": round(y2, 1)},
+        })
 
-    config = CROP_CONFIGS[crop]
-    model = loaded_models[crop]
-    class_names = config["class_names"]
-    disease_info = config["disease_info"]
+    detections.sort(key=lambda d: d["confidence"], reverse=True)
 
-    tensor = transform(image).unsqueeze(0).to(DEVICE)
+    if detections:
+        top = detections[0]
+        top_info = disease_info.get(top["disease_key"], {})
+        summary = {
+            "disease_key": top["disease_key"],
+            "disease_name": top["disease_name"],
+            "confidence": top["confidence"],
+            "level": top["level"],
+            "pathogen": top_info.get("pathogen", ""),
+            "conditions": top_info.get("conditions", ""),
+            "recommended_steps": top_info.get("steps", []),
+        }
+        found = True
+    else:
+        summary = {
+            "disease_key": None,
+            "disease_name": "Không phát hiện được vùng bất thường nào",
+            "confidence": None,
+            "level": None,
+            "pathogen": None,
+            "conditions": None,
+            "recommended_steps": [
+                "Thử chụp lại ảnh rõ nét hơn, đủ sáng, cận cảnh vùng nghi ngờ có bệnh",
+                "Có thể cây đang khỏe mạnh, hoặc vết bệnh chưa đủ rõ để nhận diện",
+            ],
+        }
+        found = False
+
+    return detections, summary, found
+
+
+def _predict_classification(entry, image):
+    model = entry["model"]
+    class_names = entry["config"]["class_names"]
+    disease_info = entry["config"]["disease_info"]
+
+    tensor = CLASSIFY_TRANSFORM(image).unsqueeze(0).to(DEVICE)
     with torch.no_grad():
         output = model(tensor)
         probs = torch.softmax(output, dim=1)[0]
 
-    k = min(3, len(class_names))
-    topk_probs, topk_idx = torch.topk(probs, k)
+    top_prob, top_idx = torch.max(probs, dim=0)
+    top_class = class_names[top_idx.item()]
+    info = disease_info.get(top_class, {})
+    confidence = round(top_prob.item() * 100, 2)
 
-    top_class = class_names[topk_idx[0].item()]
-    info = disease_info[top_class]
+    detection = {
+        "disease_key": top_class,
+        "disease_name": info.get("name_vi", top_class),
+        "confidence": confidence,
+        "level": info.get("level", ""),
+        "bbox": None,  # model classification khong khoanh vung
+    }
+
+    summary = {
+        "disease_key": top_class,
+        "disease_name": info.get("name_vi", top_class),
+        "confidence": confidence,
+        "level": info.get("level", ""),
+        "pathogen": info.get("pathogen", ""),
+        "conditions": info.get("conditions", ""),
+        "recommended_steps": info.get("steps", []),
+    }
+
+    # classification luon ra 1 nhan (ke ca "healthy"), khong co khai niem "khong tim thay gi"
+    return [detection], summary, True
+
+
+@app.post("/predict")
+async def predict(
+    file: UploadFile = File(...),
+    crop: str = Form(...),
+    conf: Optional[float] = Form(DEFAULT_CONF),
+):
+    crop = crop.lower()
+
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File phai la anh (jpg, png...)")
+
+    try:
+        contents = await file.read()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Khong doc duoc anh, file co the bi loi")
+
+    # ==== BACKEND GEMINI (hien tai) - cho ca 7 cay, tu nhan dien dung/sai cay ====
+    if DIAGNOSIS_BACKEND == "gemini":
+        if crop not in CROP_VI_NAMES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cay '{crop}' khong hop le. Cac cay ho tro: {list(CROP_VI_NAMES.keys())}",
+            )
+        try:
+            # xac nhan file la anh doc duoc truoc khi gui cho Gemini
+            image = Image.open(io.BytesIO(contents)).convert("RGB")
+        except Exception:
+            raise HTTPException(status_code=400, detail="Khong doc duoc anh, file co the bi loi")
+
+        # Luu anh tam ra file tinh, tao URL that de WebAI-to-API tu tai ve (xem
+        # giai thich o LOCAL_IMAGE_BASE_URL phia tren) - KHONG dung base64.
+        # LUON re-encode sang JPEG (bo qua dinh dang goc nhu webp/heic/png) vi
+        # mimetypes trong container Debian slim co the khong nhan dien dung
+        # Content-Type cho .webp -> gemini-webapi tu choi tai anh (da gap loi
+        # nay thuc te). .jpg la dinh dang chuan nhat, luon duoc nhan dien dung.
+        tmp_filename = f"{uuid.uuid4().hex}.jpg"
+        tmp_path = os.path.join(TMP_IMAGES_DIR, tmp_filename)
+        image.save(tmp_path, format="JPEG", quality=92)
+        image_url = f"{LOCAL_IMAGE_BASE_URL}/tmp-images/{tmp_filename}"
+        print(f"[DEBUG] Anh tam: {tmp_path} ({os.path.getsize(tmp_path)} bytes) -> {image_url}")
+
+        try:
+            # QUAN TRONG: diagnose_with_gemini() goi OpenAI client dong bo (blocking),
+            # ban than no lai cho web_ai_server tai nguoc anh qua chinh URL
+            # predict.girc-ai.com -> tunnel -> localhost:8000 (tuc la CHINH process
+            # nay). Neu goi truc tiep trong "async def predict", loi goi dong bo se
+            # chiem het event loop duy nhat cua uvicorn, khien process khong the
+            # tra loi duoc chinh request tai anh do -> tu deadlock voi chinh minh,
+            # chi thoat duoc khi het timeout tai anh ben webai-to-api (day la nguyen
+            # nhan "load rat lau" / "Failed to download"). Chay trong threadpool de
+            # event loop con ranh phuc vu StaticFiles /tmp-images song song.
+            result = await run_in_threadpool(diagnose_with_gemini, image_url, crop)
+        except GeminiDiagnosisError as e:
+            raise HTTPException(status_code=502, detail=str(e))
+        finally:
+            # DEBUG_KEEP_TMP_IMAGES=True: KHONG xoa anh tam, de test tay URL nay
+            # tu trong container xem loi that su la gi. Nho doi lai False sau khi
+            # xong, khong thi tmp_images/ se day dan.
+            if not DEBUG_KEEP_TMP_IMAGES:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
+        return {
+            "crop": crop,
+            "model_type": "gemini",
+            "image_width": image.width,
+            "image_height": image.height,
+            "crop_mismatch": result["crop_mismatch"],
+            "detected_crop": result["detected_crop"],
+            "detections": result["detections"],
+            "detection_count": result["detection_count"],
+            "found": result["found"],
+            "summary": result["summary"],
+        }
+
+    # ==== BACKEND LOCAL (model tu train, giu nguyen tu ban truoc) ====
+    if crop not in loaded_models:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cay '{crop}' chua co model. Cac cay ho tro: {list(loaded_models.keys())}",
+        )
+
+    try:
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Khong doc duoc anh, file co the bi loi")
+
+    entry = loaded_models[crop]
+
+    if entry["type"] == "detection":
+        detections, summary, found = _predict_detection(entry, image, conf)
+    else:
+        detections, summary, found = _predict_classification(entry, image)
 
     return {
         "crop": crop,
-        "disease_key": top_class,
-        "disease_name": info["name_vi"],
-        "pathogen": info.get("pathogen", ""),
-        "conditions": info.get("conditions", ""),
-        "confidence": round(topk_probs[0].item() * 100, 2),
-        "level": info["level"],
-        "recommended_steps": info["steps"],
-        "top3": [
-            {
-                "disease_key": class_names[idx.item()],
-                "disease_name": disease_info[class_names[idx.item()]]["name_vi"],
-                "confidence": round(prob.item() * 100, 2),
-            }
-            for prob, idx in zip(topk_probs, topk_idx)
-        ],
+        "model_type": entry["type"],
+        "image_width": image.width,
+        "image_height": image.height,
+        "detections": detections,
+        "detection_count": len(detections),
+        "found": found,
+        "summary": summary,
     }

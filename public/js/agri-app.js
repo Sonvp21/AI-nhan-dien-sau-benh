@@ -24,11 +24,24 @@ function agriApp(){
     symptomPage:0,
 
     // ==== TÍCH HỢP AI THẬT ====
+    // Service FastAPI gio nam CHUNG trong repo Laravel nay (app.py o thu muc goc),
+    // khong con tach rieng project fastaoi_plant nua - chi con 1 process/1 deploy.
+    // Backend chan doan HIEN TAI la Gemini (qua WebAI-to-API chay local, xem
+    // gemini_diagnosis.py + SETUP_NOTES.md) - dung chung cho CA 7 CAY, Gemini tu
+    // nhan dien ca dung/sai cay (xem crop_mismatch ben duoi). Code model YOLO/
+    // EfficientNet tu train van con nguyen trong app.py, chi tam thoi khong dung.
+    // URL that qua reverse proxy cua chinh domain Laravel (xem SETUP_NOTES.md muc 5,
+    // OpenLiteSpeed Context proxy /predict -> agriai:8000) - KHONG duoc de localhost
+    // o day, vi day la code chay trong TRINH DUYET cua nguoi dung cuoi, tro ve
+    // 127.0.0.1 se goi vao chinh may cua ho chu khong phai server.
     AI_API_URL: 'https://aiplant.girc.edu.vn/predict',
-    cropApiKey: {'Chè':'che', 'Lúa':'lua', 'Ngô':'ngo', 'Sắn':'san', 'Cà chua':'ca_chua', 'Ớt':'ot', 'Xoài':'xoai'},
+    // Ca 7 cay deu goi API that (Gemini tu nhan dien duoc moi loai cay, khong can
+    // model rieng cho tung cay nua). Neu API loi/khong ket noi duoc, catch() ben
+    // duoi se bao loi thay vi lang le rot ve du lieu mau.
+    cropApiKey: {'Chè':'che', 'Lúa':'lua', 'Ngô':'ngo', 'Sắn':'san', 'Cà chua':'ca_chua', 'Xoài':'xoai', 'Ớt':'ot'},
     liveResult: null,
     titleCase(s){
-      let clean = s.replace(/^(Cassava___|Tomato___|Pepper,_bell___)/, '').replace(/_/g, ' ').replace(/,/g, '');
+      let clean = s.replace(/^(Cassava___|Tomato___)/, '').replace(/_/g, ' ');
       return clean.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
     },
 
@@ -54,21 +67,38 @@ function agriApp(){
           if(!res.ok) throw new Error('API lỗi: ' + res.status);
           const data = await res.json();
 
+          // Gemini phat hien anh KHONG khop cay da chon -> chan lai, khong hien
+          // chan doan benh (tranh chan doan sai tren anh cay khac).
+          if(data.crop_mismatch){
+            this.liveResult = {
+              disease:'', nameEn:'', pathogen:'', conditions:'', level:'',
+              steps: [], isLive: true, found: false,
+              cropMismatch: true, detectedCrop: data.detected_crop || '',
+              detections: [], symptoms: [],
+            };
+            this.diagnosing = false;
+            this.diagnosed = true;
+            return;
+          }
+
+          const summary = data.summary || {};
+          const found = summary.disease_key !== null && summary.disease_key !== undefined;
+
           this.liveResult = {
-            disease: data.disease_name,
-            nameEn: this.titleCase(data.disease_key),
-            pathogen: data.pathogen || '',
-            conditions: data.conditions || '',
-            confidence: data.confidence + '%',
-            level: data.level,
-            steps: data.recommended_steps,
+            disease: summary.disease_name || 'Không xác định',
+            nameEn: found ? this.titleCase(summary.disease_key) : '',
+            pathogen: summary.pathogen || '',
+            conditions: summary.conditions || '',
+            level: summary.level || 'Trung bình',
+            steps: summary.recommended_steps || [],
             isLive: true,
-            lowConfidence: data.confidence < 50,
-            top3: (data.top3 || []).map(t => ({
-              disease: t.disease_name,
-              nameEn: this.titleCase(t.disease_key),
-              confidence: t.confidence + '%',
-            })),
+            found: found,
+            cropMismatch: false,
+            detectedCrop: '',
+            // Danh sach TEN BENH phat hien duoc, KHONG trung lap, KHONG kem %.
+            // Detection co the ra nhieu vung benh khac nhau tren cung 1 anh
+            // (khac voi model classification cu chi ra 1 nhan duy nhat/anh)
+            detections: this.uniqueDiseaseNames(data.detections),
             symptoms: [],
           };
           this.diagnosing = false;
@@ -94,6 +124,21 @@ function agriApp(){
       this.liveResult = null;
       this.confirmedPhotos.forEach(p => URL.revokeObjectURL(p.url));
       this.confirmedPhotos = [];
+    },
+
+    // Gop danh sach detections tra ve tu API thanh danh sach TEN BENH khong
+    // trung lap (khong hien %), giu thu tu xuat hien dau tien (API da sap
+    // xep theo confidence giam dan nen thu tu nay van uu tien benh ro nhat truoc).
+    uniqueDiseaseNames(detections){
+      const seen = new Set();
+      const result = [];
+      (detections || []).forEach(d => {
+        if(!seen.has(d.disease_key)){
+          seen.add(d.disease_key);
+          result.push({ disease: d.disease_name, nameEn: this.titleCase(d.disease_key) });
+        }
+      });
+      return result;
     },
 
     // ==== dropzone / modal chụp ảnh, chọn ảnh ====
@@ -258,7 +303,9 @@ function agriApp(){
         steps:['Duy trì chế độ chăm sóc hiện tại.','Kiểm tra định kỳ 2 tuần một lần vào mùa mưa.','Bón phân cân đối NPK theo giai đoạn sinh trưởng.'],
         symptoms:[{emoji:'🍃',caption:'Lá xanh, không có đốm bệnh'},{emoji:'🌱',caption:'Búp phát triển bình thường'},{emoji:'🌿',caption:'Tán cây đều, khỏe mạnh'},
                   {emoji:'🌳',caption:'Rễ phát triển tốt'},{emoji:'📈',caption:'Năng suất búp ổn định'},{emoji:'🍃',caption:'Màu lá xanh đậm tự nhiên'}]},
-      // Ớt, Xoài: chưa có model AI thật (chưa có trong cropApiKey) nên dùng dữ liệu mẫu
+      // Xoài: chưa có model AI thật (chưa có trong cropApiKey) nên dùng dữ liệu mẫu.
+      // Ớt vẫn giữ 1 bản mẫu ở đây làm dự phòng, nhưng bình thường sẽ không dùng tới
+      // vì Ớt đã có trong cropApiKey (sẽ gọi API thật).
       'Ớt': {disease:'Thán thư quả ớt', nameEn:'Chili Anthracnose', level:'Nặng', confidence:'92.5%',
         steps:['Cắt bỏ, tiêu hủy quả bệnh để tránh lây lan.','Phun thuốc gốc Mancozeb hoặc Chlorothalonil.','Tránh tưới nước lên tán lá, giữ vườn thông thoáng.'],
         symptoms:[{emoji:'🌶️',caption:'Đốm tròn lõm trên quả'},{emoji:'🍂',caption:'Viền đốm màu nâu sẫm'},{emoji:'🌿',caption:'Quả thối nhũn, rụng sớm'},
