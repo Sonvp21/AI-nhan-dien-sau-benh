@@ -39,8 +39,8 @@ function agriApp(){
     // OpenLiteSpeed Context proxy /predict -> agriai:8000) - KHONG duoc de localhost
     // o day, vi day la code chay trong TRINH DUYET cua nguoi dung cuoi, tro ve
     // 127.0.0.1 se goi vao chinh may cua ho chu khong phai server.
-    // AI_API_URL: 'https://aiplant.girc.edu.vn/predict',
-    AI_API_URL: 'http://127.0.0.1:8000/predict',
+    AI_API_URL: 'https://aiplant.girc.edu.vn/predict',
+    // AI_API_URL: 'http://127.0.0.1:8000/predict',
     // Ca 7 cay deu goi API that (Gemini tu nhan dien duoc moi loai cay, khong can
     // model rieng cho tung cay nua). Neu API loi/khong ket noi duoc, catch() ben
     // duoi se bao loi thay vi lang le rot ve du lieu mau.
