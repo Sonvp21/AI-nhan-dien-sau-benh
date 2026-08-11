@@ -24,3 +24,8 @@ Route::post('/quet-anh/{token}/upload', [RemoteCaptureController::class, 'upload
 Route::get('/quet-anh/{token}/status', [RemoteCaptureController::class, 'status'])
     ->where('token', '[A-Za-z0-9\-]{6,64}')
     ->name('agri.remote-capture.status');
+use App\Http\Controllers\Admin\DiseaseController;
+
+Route::prefix('admin')->name('admin.')->group(function () {
+    Route::resource('diseases', DiseaseController::class);
+});
