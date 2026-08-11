@@ -350,10 +350,18 @@ async def predict(
             "image_height": image.height,
             "crop_mismatch": result["crop_mismatch"],
             "detected_crop": result["detected_crop"],
+            # % Gemini tu danh gia kha nang cay dang co benh/sau hai noi chung (0-100),
+            # doc lap voi % tung benh cu the trong detections/summary ben duoi.
+            "disease_probability": result["disease_probability"],
             "detections": result["detections"],
             "detection_count": result["detection_count"],
             "found": result["found"],
             "summary": result["summary"],
+            # THU NGHIEM: anh Gemini TU TIM duoc tren web (khong phai anh tu ve) khi
+            # no tu tra cuu de xac nhan chan doan - xem _extract_reference_images()
+            # trong gemini_diagnosis.py. Co the la [] neu ban WebAI-to-API dang chay
+            # chua ho tro, khong dam bao luon co.
+            "reference_images": result.get("reference_images", []),
         }
 
     # ==== BACKEND LOCAL (model tu train, giu nguyen tu ban truoc) ====

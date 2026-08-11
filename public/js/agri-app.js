@@ -23,6 +23,11 @@ function agriApp(){
     selectedCrop:'Chè',
     symptomPage:0,
 
+    // Modal xem chi tiet 1 benh KHAC ngoai benh chinh (xem uniqueDiseaseNames()
+    // va openOtherDisease() ben duoi + disease-detail-modal.blade.php)
+    otherDiseaseModalOpen:false,
+    selectedOtherDisease:null,
+
     // ==== TÍCH HỢP AI THẬT ====
     // Service FastAPI gio nam CHUNG trong repo Laravel nay (app.py o thu muc goc),
     // khong con tach rieng project fastaoi_plant nua - chi con 1 process/1 deploy.
@@ -34,7 +39,8 @@ function agriApp(){
     // OpenLiteSpeed Context proxy /predict -> agriai:8000) - KHONG duoc de localhost
     // o day, vi day la code chay trong TRINH DUYET cua nguoi dung cuoi, tro ve
     // 127.0.0.1 se goi vao chinh may cua ho chu khong phai server.
-    AI_API_URL: 'https://aiplant.girc.edu.vn/predict',
+    // AI_API_URL: 'https://aiplant.girc.edu.vn/predict',
+    AI_API_URL: 'http://127.0.0.1:8000/predict',
     // Ca 7 cay deu goi API that (Gemini tu nhan dien duoc moi loai cay, khong can
     // model rieng cho tung cay nua). Neu API loi/khong ket noi duoc, catch() ben
     // duoi se bao loi thay vi lang le rot ve du lieu mau.
@@ -71,10 +77,12 @@ function agriApp(){
           // chan doan benh (tranh chan doan sai tren anh cay khac).
           if(data.crop_mismatch){
             this.liveResult = {
-              disease:'', nameEn:'', pathogen:'', conditions:'', level:'',
-              steps: [], isLive: true, found: false,
+              disease:'', nameEn:'', pathogen:'', level:'',
+              probability: null, diseaseProbability: null,
+              signsInPhoto:'', symptomsText:'', treatment:'', prevention:'',
+              isLive: true, found: false,
               cropMismatch: true, detectedCrop: data.detected_crop || '',
-              detections: [], symptoms: [],
+              detections: [], symptoms: [], referenceImages: [],
             };
             this.diagnosing = false;
             this.diagnosed = true;
@@ -82,24 +90,41 @@ function agriApp(){
           }
 
           const summary = data.summary || {};
-          const found = summary.disease_key !== null && summary.disease_key !== undefined;
+          // "found" (co benh thuc su, khac "Cay khoe manh") gio doc thang tu API,
+          // khong tu doan qua disease_key nua (Gemini luon tra ve 1 entry ke ca
+          // khi cay khoe, nen disease_key khong con null trong truong hop do).
+          const found = !!data.found;
 
           this.liveResult = {
             disease: summary.disease_name || 'Không xác định',
             nameEn: found ? this.titleCase(summary.disease_key) : '',
             pathogen: summary.pathogen || '',
-            conditions: summary.conditions || '',
             level: summary.level || 'Trung bình',
-            steps: summary.recommended_steps || [],
+            // % Gemini tu uoc luong (tham khao, khong phai so lieu ML) - null neu
+            // Gemini khong tra hoac cay khoe manh khong co gia tri ro rang.
+            probability: summary.probability ?? null,
+            diseaseProbability: data.disease_probability ?? null,
+            // 4 truong chi tiet tach rieng tu prompt Gemini (xem gemini_diagnosis.py):
+            // dau hieu QUAN SAT TRONG CHINH ANH NAY (signsInPhoto), dau hieu nhan
+            // biet CHUNG cua benh (symptomsText), cach chua tri, cach phong ngua -
+            // moi truong la 1 doan van, hien thay cho danh sach "steps" gop chung cu.
+            signsInPhoto: summary.signs_in_photo || '',
+            symptomsText: summary.symptoms || '',
+            treatment: summary.treatment || '',
+            prevention: summary.prevention || '',
             isLive: true,
             found: found,
             cropMismatch: false,
             detectedCrop: '',
-            // Danh sach TEN BENH phat hien duoc, KHONG trung lap, KHONG kem %.
-            // Detection co the ra nhieu vung benh khac nhau tren cung 1 anh
-            // (khac voi model classification cu chi ra 1 nhan duy nhat/anh)
+            // Danh sach TEN BENH + % phat hien duoc, KHONG trung lap, sap theo %
+            // giam dan (API da sap xep san). Detection co the ra nhieu vung benh
+            // khac nhau tren cung 1 anh.
             detections: this.uniqueDiseaseNames(data.detections),
             symptoms: [],
+            // THU NGHIEM: anh Gemini TU TIM tren web (khong phai anh tu ve), xem
+            // symptomPages getter + gemini_diagnosis.py. Moi phan tu dang
+            // {url, title} - co the la [] neu ban dang chay chua ho tro.
+            referenceImages: data.reference_images || [],
           };
           this.diagnosing = false;
           this.diagnosed = true;
@@ -122,23 +147,45 @@ function agriApp(){
       this.diagnosed = false;
       this.symptomPage = 0;
       this.liveResult = null;
+      this.otherDiseaseModalOpen = false;
+      this.selectedOtherDisease = null;
       this.confirmedPhotos.forEach(p => URL.revokeObjectURL(p.url));
       this.confirmedPhotos = [];
     },
 
-    // Gop danh sach detections tra ve tu API thanh danh sach TEN BENH khong
-    // trung lap (khong hien %), giu thu tu xuat hien dau tien (API da sap
-    // xep theo confidence giam dan nen thu tu nay van uu tien benh ro nhat truoc).
+    // Gop danh sach detections tra ve tu API thanh danh sach KHONG trung lap,
+    // giu THAM SO ĐẦY ĐỦ tung benh (khong chi ten + %) de: (1) benh dau tien (%
+    // cao nhat) lam ket luan chinh hien ngay ngoai panel, (2) cac benh con lai
+    // hien thanh list bam vao mo modal xem chi tiet rieng (pathogen/symptoms/
+    // treatment/prevention) - xem disease-detail-modal.blade.php. Giu thu tu API
+    // da sap xep theo % giam dan.
     uniqueDiseaseNames(detections){
       const seen = new Set();
       const result = [];
       (detections || []).forEach(d => {
         if(!seen.has(d.disease_key)){
           seen.add(d.disease_key);
-          result.push({ disease: d.disease_name, nameEn: this.titleCase(d.disease_key) });
+          result.push({
+            disease: d.disease_name,
+            nameEn: this.titleCase(d.disease_key),
+            probability: d.probability ?? null,
+            level: d.level || '',
+            pathogen: d.pathogen || '',
+            signsInPhoto: d.signs_in_photo || '',
+            symptomsText: d.symptoms || '',
+            treatment: d.treatment || '',
+            prevention: d.prevention || '',
+          });
         }
       });
       return result;
+    },
+
+    // Mo modal xem chi tiet 1 benh KHAC (khong phai benh chinh dang hien ngoai
+    // panel) - d la 1 phan tu trong info.detections (da co day du field o tren).
+    openOtherDisease(d){
+      this.selectedOtherDisease = d;
+      this.otherDiseaseModalOpen = true;
     },
 
     // ==== dropzone / modal chụp ảnh, chọn ảnh ====
@@ -271,11 +318,20 @@ function agriApp(){
       {name:'Ớt', icon:'flame', img: ASSETS.crops.ot || null},
       {name:'Xoài', icon:'apple', img: ASSETS.crops.xoai || null},
     ],
-    selectCrop(name){ this.selectedCrop = name; this.symptomPage = 0; this.diagnosed = false; this.diagnosing = false; this.liveResult = null; },
+    selectCrop(name){ this.selectedCrop = name; this.symptomPage = 0; this.diagnosed = false; this.diagnosing = false; this.liveResult = null; this.otherDiseaseModalOpen = false; this.selectedOtherDisease = null; },
     get info(){ return this.liveResult || this.diseaseDB[this.selectedCrop]; },
     get symptomPages(){
-      const arr = this.info.symptoms || [];
-      if(!arr.length) return [];
+      // Du lieu mau (demo): dung sac "symptoms" tinh (emoji + caption, khong co
+      // anh thuc). AI thuc (Gemini): dung "referenceImages" - anh Gemini THUC SU
+      // tim duoc tren web luc no tu tra cuu (THU NGHIEM, co the rong neu ban
+      // WebAI-to-API dang chay chua ho tro - xem gemini_diagnosis.py). Card se tu
+      // hien icon la thay the neu tung anh khong co url (xem photo-panel.blade.php).
+      const raw = this.info.isLive ? (this.info.referenceImages || []) : (this.info.symptoms || []);
+      if(!raw.length) return [];
+      // Chuan hoa ve 1 format duy nhat {url, caption} de photo-panel.blade.php
+      // dung chung 1 template cho ca demo (khong co url, chi co icon la + caption)
+      // va anh Gemini tim duoc thuc (co url thi hien <img>, khong thi fallback icon).
+      const arr = raw.map(item => ({ url: item.url || null, caption: item.caption || item.title || '' }));
       const pages = [];
       for(let i=0;i<arr.length;i+=3) pages.push(arr.slice(i,i+3));
       return pages;

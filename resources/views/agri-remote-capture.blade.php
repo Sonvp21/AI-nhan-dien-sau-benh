@@ -280,38 +280,60 @@
         // doan benh (giong het xu ly trong agri-app.js).
         if(data.crop_mismatch){
           return {
-            disease:'', nameEn:'', pathogen:'', conditions:'', level:'',
-            steps: [], isLive: true, found: false,
+            disease:'', nameEn:'', pathogen:'', level:'',
+            probability: null, diseaseProbability: null,
+            signsInPhoto:'', symptomsText:'', treatment:'', prevention:'',
+            isLive: true, found: false,
             cropMismatch: true, detectedCrop: data.detected_crop || '',
-            detections: [], symptoms: [],
+            detections: [], symptoms: [], referenceImages: [],
           };
         }
 
         var summary = data.summary || {};
-        var found = summary.disease_key !== null && summary.disease_key !== undefined;
-        // Danh sach ten benh khong trung lap, khong kem %, giu thu tu API
-        // (da sap xep theo confidence giam dan)
+        // "found" doc thang tu API (giong agri-app.js) - Gemini luon tra ve 1 entry
+        // ke ca khi cay khoe, nen khong con doan qua disease_key === null duoc nua.
+        var found = !!data.found;
+        // Danh sach ten benh + % khong trung lap, giu thu tu API (da sap xep theo
+        // % giam dan)
         var seen = {};
         var detections = [];
         (data.detections || []).forEach(function(d){
           if(!seen[d.disease_key]){
             seen[d.disease_key] = true;
-            detections.push({ disease: d.disease_name, nameEn: titleCase(d.disease_key) });
+            // Giu day du field (giong uniqueDiseaseNames() trong agri-app.js) de man
+            // hinh trinh chieu nhan duoc ket qua nay qua polling van mo modal "benh
+            // khac" xem chi tiet duoc, khong chi co ten + %.
+            detections.push({
+              disease: d.disease_name,
+              nameEn: titleCase(d.disease_key),
+              probability: d.probability != null ? d.probability : null,
+              level: d.level || '',
+              pathogen: d.pathogen || '',
+              signsInPhoto: d.signs_in_photo || '',
+              symptomsText: d.symptoms || '',
+              treatment: d.treatment || '',
+              prevention: d.prevention || '',
+            });
           }
         });
         return {
           disease: summary.disease_name || 'Không xác định',
           nameEn: found ? titleCase(summary.disease_key) : '',
           pathogen: summary.pathogen || '',
-          conditions: summary.conditions || '',
           level: summary.level || 'Trung bình',
-          steps: summary.recommended_steps || [],
+          probability: summary.probability != null ? summary.probability : null,
+          diseaseProbability: data.disease_probability != null ? data.disease_probability : null,
+          signsInPhoto: summary.signs_in_photo || '',
+          symptomsText: summary.symptoms || '',
+          treatment: summary.treatment || '',
+          prevention: summary.prevention || '',
           isLive: true,
           found: found,
           cropMismatch: false,
           detectedCrop: '',
           detections: detections,
           symptoms: [],
+          referenceImages: data.reference_images || [],
         };
       });
   }

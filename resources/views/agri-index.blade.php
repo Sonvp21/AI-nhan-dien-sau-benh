@@ -45,7 +45,7 @@
     <div class="flex flex-col md:flex-row gap-6 md:gap-0 items-stretch">
 
       <!-- CỘT TRÁI: chọn mô hình (box riêng) + panel chụp ảnh, xếp dọc, cùng 1 cột -->
-      <div class="md:flex-[1.7] md:mr-4 2xl:mr-6 flex flex-col gap-4 2xl:gap-5">
+      <div class="md:flex-1 md:mr-4 2xl:mr-6 flex flex-col gap-4 2xl:gap-5">
         <x-agri.crop-selector />
         <x-agri.photo-panel />
       </div>
@@ -62,6 +62,7 @@
   <x-agri.footer />
 
   <x-agri.photo-modal />
+  <x-agri.disease-detail-modal />
 
   <script src="{{ asset('js/agri-app.js') }}"></script>
 </body>

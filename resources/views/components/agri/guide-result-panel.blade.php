@@ -49,24 +49,24 @@
       </div>
     </template>
 
-    <!-- AI thật, có phát hiện bệnh: title to = "Chẩn đoán được các bệnh sau" -->
-    <template x-if="!info.cropMismatch && info.isLive && info.detections && info.detections.length">
-      <div>
-        <p class="text-[21px] md:text-[22px] 2xl:text-[25px] font-bold" style="color:#12341d">Chẩn đoán được các bệnh sau:</p>
-        <ul class="mt-2.5 flex flex-col gap-1.5">
-          <template x-for="(d, i) in info.detections" :key="i">
-            <li class="text-[15px] 2xl:text-[16px] font-semibold flex items-center gap-1.5" style="color:#c1440e">
-              <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:#c1440e"></span>
-              <span x-text="d.disease"></span>
-            </li>
-          </template>
-        </ul>
+    <!-- % tổng quát khả năng cây đang có bệnh/sâu hại (Gemini tự ước lượng qua ảnh,
+         chỉ mang tính tham khảo trực quan, không phải số liệu ML chính xác) -->
+    <template x-if="!info.cropMismatch && info.isLive && info.diseaseProbability !== null && info.diseaseProbability !== undefined">
+      <div class="mb-3 px-3 py-2 rounded-lg flex items-center justify-between" style="background:#fff7ed;border:1px dashed #f0d9c4">
+        <span class="text-[12.5px] 2xl:text-[13.5px] font-semibold" style="color:#4a5245">Khả năng cây đang có bệnh/sâu hại:</span>
+        <span class="text-[16px] 2xl:text-[17px] font-bold" :style="info.diseaseProbability >= 50 ? 'color:#c1440e' : 'color:#1f6d3c'" x-text="info.diseaseProbability + '%'"></span>
       </div>
     </template>
 
-    <!-- Dữ liệu mẫu (demo) hoặc AI thật nhưng không có detections: giữ title bằng tên bệnh -->
-    <template x-if="!info.cropMismatch && !(info.isLive && info.detections && info.detections.length)">
-      <p class="text-[21px] md:text-[22px] 2xl:text-[25px] font-bold" style="color:#c1440e" x-text="info.disease"></p>
+    <!-- Ket luan CHINH: luon la 1 ten benh duy nhat (benh co % cao nhat neu la AI
+         thật, hoặc dữ liệu mẫu). Các bệnh khác cùng phát hiện được (nếu có) không
+         liệt kê chung ở đây nữa, mà đưa xuống list "Các bệnh khác" bên dưới để
+         bấm vào xem chi tiết riêng, tránh loãng kết luận chính. -->
+    <template x-if="!info.cropMismatch">
+      <div class="flex items-center gap-2 flex-wrap">
+        <p class="text-[21px] md:text-[22px] 2xl:text-[25px] font-bold" style="color:#c1440e" x-text="(info.isLive && info.detections && info.detections.length) ? info.detections[0].disease : info.disease"></p>
+        <span x-show="info.isLive && info.detections && info.detections.length && info.detections[0].probability !== null && info.detections[0].probability !== undefined" class="text-[13px] 2xl:text-[14px] font-bold px-2 py-0.5 rounded-full shrink-0" style="background:#f6e2d1;color:#c1440e" x-text="info.detections[0].probability + '%'"></span>
+      </div>
     </template>
 
     <!-- Ảnh AI thật nhưng KHÔNG tìm thấy vùng bệnh nào (khác với "cây khỏe mạnh") -->
@@ -79,11 +79,63 @@
     <template x-if="info.pathogen">
       <p class="text-[12.5px] 2xl:text-[13.5px] mt-2.5" style="color:#4a5245"><span class="font-semibold">Tác nhân gây bệnh:</span> <span x-text="info.pathogen"></span></p>
     </template>
-    <template x-if="info.conditions">
-      <p class="text-[12.5px] 2xl:text-[13.5px] mt-1" style="color:#4a5245"><span class="font-semibold">Điều kiện phát sinh:</span> <span x-text="info.conditions"></span></p>
+
+    <!-- Dau hieu QUAN SAT DUOC trong chinh anh vua chup (khac voi "dau hieu nhan
+         biet chung" ben duoi) - day la phan giai thich VI SAO AI ket luan nhu vay
+         dua tren buc anh cu the nay, khong phai mo ta chung tu sach vo. -->
+    <template x-if="!info.cropMismatch && info.signsInPhoto">
+      <div class="mt-4 pt-4" style="border-top:1px solid #f0d9c4">
+        <p class="text-[14px] 2xl:text-[15px] font-bold mb-1.5" style="color:#12341d">Dấu hiệu quan sát được trong ảnh này:</p>
+        <p class="text-[13.5px] 2xl:text-[14.5px] leading-relaxed" style="color:#4a5245" x-text="info.signsInPhoto"></p>
+      </div>
     </template>
 
-    <div x-show="!info.cropMismatch" class="mt-5 pt-4" style="border-top:1px solid #f0d9c4">
+    <!-- 3 mục chi tiết còn lại do Gemini trả về: dấu hiệu nhận biết chung, cách
+         chữa trị, cách phòng ngừa - mỗi mục 1 đoạn văn riêng (thay cho "steps" gộp cũ) -->
+    <template x-if="!info.cropMismatch && info.symptomsText">
+      <div class="mt-4 pt-4" style="border-top:1px solid #f0d9c4">
+        <p class="text-[14px] 2xl:text-[15px] font-bold mb-1.5" style="color:#12341d">Dấu hiệu nhận biết chung:</p>
+        <p class="text-[13.5px] 2xl:text-[14.5px] leading-relaxed" style="color:#4a5245" x-text="info.symptomsText"></p>
+      </div>
+    </template>
+
+    <template x-if="!info.cropMismatch && info.treatment">
+      <div class="mt-4 pt-4" style="border-top:1px solid #f0d9c4">
+        <p class="text-[14px] 2xl:text-[15px] font-bold mb-1.5" style="color:#12341d">Cách chữa trị:</p>
+        <p class="text-[13.5px] 2xl:text-[14.5px] leading-relaxed" style="color:#4a5245" x-text="info.treatment"></p>
+      </div>
+    </template>
+
+    <template x-if="!info.cropMismatch && info.prevention">
+      <div class="mt-4 pt-4" style="border-top:1px solid #f0d9c4">
+        <p class="text-[14px] 2xl:text-[15px] font-bold mb-1.5" style="color:#12341d">Cách phòng ngừa, phòng tránh:</p>
+        <p class="text-[13.5px] 2xl:text-[14.5px] leading-relaxed" style="color:#4a5245" x-text="info.prevention"></p>
+      </div>
+    </template>
+
+    <!-- Cac benh KHAC cung phat hien duoc tren cung anh (ngoai benh chinh o tren) -
+         chi hien ten + %, bam vao moi mo modal xem day du dau hieu/cach chua/phong
+         ngua rieng cho benh do (xem disease-detail-modal.blade.php), tranh loang
+         phan ket luan chinh ngay tren. -->
+    <template x-if="!info.cropMismatch && info.isLive && info.detections && info.detections.length > 1">
+      <div class="mt-4 pt-4" style="border-top:1px solid #f0d9c4">
+        <p class="text-[14px] 2xl:text-[15px] font-bold mb-2.5" style="color:#12341d">Các bệnh khác có thể gặp:</p>
+        <div class="flex flex-col gap-2">
+          <template x-for="(d, i) in info.detections.slice(1)" :key="i">
+            <button type="button" @click="openOtherDisease(d)" class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-left transition hover:opacity-80" style="background:#fff;border:1px solid #f0d9c4">
+              <span class="text-[13.5px] 2xl:text-[14.5px] font-semibold" style="color:#12341d" x-text="d.disease"></span>
+              <span class="flex items-center gap-1.5 shrink-0">
+                <span x-show="d.probability !== null && d.probability !== undefined" class="text-[12px] 2xl:text-[13px] font-bold" style="color:#c9762c" x-text="d.probability + '%'"></span>
+                <i data-lucide="chevron-right" class="w-4 h-4" style="color:#c9762c"></i>
+              </span>
+            </button>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    <!-- Du lieu mau (demo, chua co Gemini) van dung dang "steps" cu -->
+    <div x-show="!info.cropMismatch && !info.isLive && info.steps && info.steps.length" class="mt-5 pt-4" style="border-top:1px solid #f0d9c4">
       <p class="text-[14px] 2xl:text-[15px] font-bold mb-3" style="color:#12341d">Cách phòng trừ, khắc phục:</p>
       <div class="flex flex-col gap-3">
         <template x-for="(step, i) in info.steps" :key="i">
