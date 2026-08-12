@@ -92,9 +92,12 @@
   // ==== cấu hình giống hệt agri-app.js bên màn hình trình chiếu ====
   // Service FastAPI nam chung trong repo Laravel (app.py o thu muc goc). Backend
   // chan doan HIEN TAI la Gemini (qua WebAI-to-API local) - dung chung cho ca 7
-  // cay, tu nhan dien duoc dung/sai cay (xem crop_mismatch o duoi). Nho doi URL
-  // nay khop voi AI_API_URL trong public/js/agri-app.js sau khi deploy that.
-  var AI_API_URL = 'http://127.0.0.1:8000/predict';
+  // cay, tu nhan dien duoc dung/sai cay (xem crop_mismatch o duoi).
+  // QUAN TRONG: code nay chay trong TRINH DUYET CUA DIEN THOAI nguoi quet ma QR,
+  // KHONG phai tren server - phai la domain THAT (khop voi AI_API_URL trong
+  // public/js/agri-app.js), khong duoc de localhost/127.0.0.1 vi dien thoai se
+  // tu goi vao chinh no, khong bao gio ket noi duoc toi server.
+  var AI_API_URL = 'https://aiplant.girc.edu.vn/predict';
   var CROP_API_KEY = {'Chè':'che', 'Lúa':'lua', 'Ngô':'ngo', 'Sắn':'san', 'Cà chua':'ca_chua', 'Xoài':'xoai', 'Ớt':'ot'};
   var CROPS = [
     {name:'Chè', img: @json(asset('image/crop-che.png')), icon:'leaf'},

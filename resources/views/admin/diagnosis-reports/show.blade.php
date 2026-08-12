@@ -136,7 +136,7 @@
           new google.maps.Marker({ position: pos, map: map, title: {{ Js::from($report->disease_name) }} });
         }
       </script>
-      <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.key') }}&callback=initReportMap" async defer></script>
+      <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.key') }}&loading=async&callback=initReportMap" async defer></script>
     @endpush
   @endif
 @endsection

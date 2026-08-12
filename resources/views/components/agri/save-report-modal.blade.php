@@ -2,13 +2,13 @@
      Mở qua openSaveModal() trong agri-app.js ngay sau khi có kết quả (nút "Lưu
      kết quả" ở guide-result-panel.blade.php). KHÔNG yêu cầu đăng nhập - chỉ cần
      nhập tên (saveSenderName) là gửi được. Thông tin bệnh tự điền từ
-     info/liveResult, ảnh lấy từ confirmedPhotos[0], vị trí lấy từ GPS hoặc do
-     người dùng tự kéo marker / bấm / tìm địa chỉ trên bản đồ Google Maps nhỏ
-     trong modal (xem initSaveMap() trong agri-app.js). Submit xong report ở
-     trạng thái "pending", chỉ lên bản đồ công khai sau khi admin duyệt (xem
+     info/liveResult, ảnh lấy từ confirmedPhotos[0], vị trí lấy từ GPS (nút
+     "Dùng vị trí hiện tại") hoặc tự kéo/bấm vào bản đồ Google Maps nhỏ trong
+     modal (xem initSaveMap() trong agri-app.js). Submit xong report ở trạng
+     thái "pending", chỉ lên bản đồ công khai sau khi admin duyệt (xem
      DiagnosisReportController + Admin\DiagnosisReportController). --}}
 <div x-show="saveModalOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(18,52,29,.5)" @click.self="closeSaveModal()">
-  <div class="bg-white rounded-2xl w-full max-w-md 2xl:max-w-lg relative shadow-2xl max-h-[92vh] overflow-y-auto">
+  <div class="bg-white rounded-2xl w-full max-w-lg 2xl:max-w-xl relative shadow-2xl max-h-[92vh] overflow-y-auto">
 
     <!-- Header: nền gradient, icon tròn, dễ nhận biết ngay là bước cuối cùng -->
     <div class="px-6 2xl:px-7 pt-6 2xl:pt-7 pb-5 rounded-t-2xl" style="background:linear-gradient(135deg,#1f6d3c,#164f2b)">
@@ -39,21 +39,16 @@
                class="w-full mt-1.5 px-3.5 py-2.5 rounded-lg text-[13.5px] border transition focus:outline-none" style="border-color:#dbe8d2" onfocus="this.style.borderColor='#1f6d3c'" onblur="this.style.borderColor='#dbe8d2'">
       </div>
 
-      <!-- Bản đồ chọn vị trí: kéo/bấm vào bản đồ hoặc tìm địa chỉ để chọn lại -->
-      <p class="text-[13px] font-semibold mt-4 mb-1.5 flex items-center gap-1.5" style="color:#12341d"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i> Vị trí phát hiện bệnh</p>
-
-      <div class="flex gap-2 mb-2">
-        <div class="relative flex-1">
-          <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2" style="color:#8a8f83"></i>
-          <input id="saveLocationSearch" type="text" placeholder="Tìm địa chỉ, tên xã/huyện..."
-                 class="w-full pl-8 pr-3 py-2 rounded-lg text-[12.5px] border" style="border-color:#dbe8d2">
-        </div>
-        <button type="button" @click="useCurrentLocationForSave()" title="Dùng vị trí hiện tại" class="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition hover:opacity-85" style="background:#f2f7ee;border:1px solid #dbe8d2;color:#1f6d3c">
-          <i data-lucide="locate-fixed" class="w-4 h-4"></i>
+      <!-- Bản đồ chọn vị trí: kéo/bấm vào bản đồ, hoặc bấm nút để lấy đúng vị
+           trí hiện tại (đã bỏ ô tìm địa chỉ theo yêu cầu). -->
+      <div class="flex items-center justify-between mt-4 mb-1.5">
+        <p class="text-[13px] font-semibold flex items-center gap-1.5" style="color:#12341d"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i> Vị trí phát hiện bệnh</p>
+        <button type="button" @click="useCurrentLocationForSave()" class="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition hover:opacity-85" style="background:#f2f7ee;border:1px solid #dbe8d2;color:#1f6d3c">
+          <i data-lucide="locate-fixed" class="w-3.5 h-3.5"></i> Vị trí của tôi
         </button>
       </div>
 
-      <p class="text-[11px] mb-1.5" style="color:#8a8f83">Kéo điểm đánh dấu, bấm vào bản đồ, hoặc tìm địa chỉ để chọn đúng vị trí. Cuộn chuột để zoom trực tiếp (không cần giữ Ctrl).</p>
+      <p class="text-[11px] mb-1.5" style="color:#8a8f83">Kéo điểm đánh dấu hoặc bấm vào bản đồ để chọn đúng vị trí. Cuộn chuột để zoom trực tiếp (không cần giữ Ctrl).</p>
       <div id="saveReportMap" class="w-full h-56 2xl:h-64 rounded-xl overflow-hidden" style="background:#e2efd9;border:1px solid #dbe8d2"></div>
 
       <div class="flex items-center gap-1.5 mt-2" x-show="savePosition.lat !== null">

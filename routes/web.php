@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\DiagnosisReportController as AdminDiagnosisReportController;
 use App\Http\Controllers\Admin\DiseaseController;
+use App\Http\Controllers\Admin\DiseaseZoneController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DiagnosisMapController;
 use App\Http\Controllers\DiagnosisReportController;
@@ -61,4 +62,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin'])->group(fun
     Route::post('diagnosis-reports/{diagnosisReport}/duyet', [AdminDiagnosisReportController::class, 'approve'])->name('diagnosis-reports.approve');
     Route::post('diagnosis-reports/{diagnosisReport}/tu-choi', [AdminDiagnosisReportController::class, 'reject'])->name('diagnosis-reports.reject');
     Route::delete('diagnosis-reports/{diagnosisReport}', [AdminDiagnosisReportController::class, 'destroy'])->name('diagnosis-reports.destroy');
+
+    // ==== Dashboard vùng dịch: thống kê + bản đồ heatmap theo cây, đánh dấu
+    //      report đã xử lý (ẩn khỏi bản đồ, vẫn giữ lại record) ====
+    Route::get('vung-dich', [DiseaseZoneController::class, 'index'])->name('vung-dich.index');
+    Route::post('vung-dich/{diagnosisReport}/xu-ly', [DiseaseZoneController::class, 'resolve'])->name('vung-dich.resolve');
+    Route::post('vung-dich/xu-ly-theo-cay', [DiseaseZoneController::class, 'resolveByCrop'])->name('vung-dich.resolve-by-crop');
 });

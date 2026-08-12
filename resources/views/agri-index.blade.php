@@ -46,10 +46,8 @@
   };
   window.GOOGLE_MAPS_KEY_PRESENT = {{ config('services.google_maps.key') ? 'true' : 'false' }};
 </script>
-{{-- &libraries=places: cần cho ô tìm địa chỉ (Places Autocomplete) trong
-     modal "Lưu kết quả" - xem initSaveMap() trong agri-app.js. --}}
 @if (config('services.google_maps.key'))
-  <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.key') }}&libraries=places" async defer></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.key') }}&loading=async" async defer></script>
 @endif
 </head>
 <body x-data="agriApp()"
@@ -92,6 +90,9 @@
   <x-agri.disease-detail-modal />
   <x-agri.save-report-modal />
 
-  <script src="{{ asset('js/agri-app.js') }}"></script>
+  {{-- ?v=filemtime: chống trình duyệt/CDN cache JS cũ - mỗi lần sửa
+       agri-app.js, mtime đổi -> URL đổi -> trình duyệt buộc tải bản mới,
+       không cần người dùng tự xoá cache/hard-refresh sau mỗi lần deploy. --}}
+  <script src="{{ asset('js/agri-app.js') }}?v={{ file_exists(public_path('js/agri-app.js')) ? filemtime(public_path('js/agri-app.js')) : time() }}"></script>
 </body>
 </html>

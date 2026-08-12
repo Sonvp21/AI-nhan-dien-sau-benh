@@ -30,6 +30,10 @@
        style="{{ request()->routeIs('admin.diagnosis-reports.*') ? 'background:#e2efd9;color:var(--forest)' : 'color:#4a5245' }}">
       <i data-lucide="clipboard-check" class="w-4 h-4"></i> Duyệt báo cáo
     </a>
+    <a href="{{ route('admin.vung-dich.index') }}" class="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13.5px] font-semibold transition"
+       style="{{ request()->routeIs('admin.vung-dich.*') ? 'background:#e2efd9;color:var(--forest)' : 'color:#4a5245' }}">
+      <i data-lucide="flame" class="w-4 h-4"></i> Vùng dịch
+    </a>
     <a href="{{ route('admin.diseases.index') }}" class="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13.5px] font-semibold transition"
        style="{{ request()->routeIs('admin.diseases.*') ? 'background:#e2efd9;color:var(--forest)' : 'color:#4a5245' }}">
       <i data-lucide="bug" class="w-4 h-4"></i> Quản lý bệnh

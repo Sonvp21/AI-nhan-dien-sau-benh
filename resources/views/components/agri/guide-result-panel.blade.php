@@ -36,6 +36,15 @@
   <!-- KẾT QUẢ: chỉ hiện sau khi chẩn đoán xong -->
   <div x-show="diagnosed" x-cloak x-transition:enter="transition ease-out duration-500" x-transition:enter-start="opacity-0 translate-x-6" x-transition:enter-end="opacity-100 translate-x-0">
 
+    <!-- Xem bản đồ vùng dịch của ĐÚNG loại cây đang chọn - nhảy sang trang bản
+         đồ dịch bệnh với filter cây tự áp sẵn (xem ?crop= trong
+         agri-disease-map.blade.php). Hiện luôn, không phụ thuộc kết quả chẩn
+         đoán, vì chỉ là điều hướng tham khảo. -->
+    <a :href="(window.AGRI_ROUTES.diseaseMap || '/ban-do-dich-benh') + '?crop=' + (cropApiKey[selectedCrop] || '')"
+       class="inline-flex items-center gap-2 mb-3 px-4 py-2 rounded-lg text-[13px] font-semibold transition hover:opacity-85" style="background:#f2f7ee;border:1px solid #dbe8d2;color:#1f6d3c">
+      <i data-lucide="map" class="w-4 h-4"></i> Xem bản đồ vùng dịch <span x-text="selectedCrop"></span>
+    </a>
+
     <!-- Ảnh KHÔNG khớp với cây đã chọn (Gemini tự nhận diện sai cây) - chặn hẳn,
          không hiện chẩn đoán benh, chỉ báo ảnh giống cây gì hơn -->
     <template x-if="info.cropMismatch">

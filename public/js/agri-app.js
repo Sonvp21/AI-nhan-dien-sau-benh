@@ -24,11 +24,10 @@ function agriApp(){
   // len cac object cua thu vien Google Maps, co the lam vo hanh vi noi bo.
   let saveMapInstance = null;
   let saveMarkerInstance = null;
-  // Ham "dat marker tai lat/lng" cua initSaveMap(), luu lai o day de cac ham
-  // khac (useCurrentLocationForSave, o tim dia chi) goi lai duoc ma khong can
-  // tao lai map. La arrow function nen van giu dung "this" ban dau (Alpine data).
+  // Ham "dat marker tai lat/lng" cua initSaveMap(), luu lai o day de
+  // useCurrentLocationForSave() goi lai duoc ma khong can tao lai map. La
+  // arrow function nen van giu dung "this" ban dau (Alpine data).
   let placeOnSaveMap = null;
-  let saveSearchBoxInitialized = false;
 
   return {
     selectedCrop:'Chè',
@@ -314,9 +313,9 @@ function agriApp(){
     },
     // Map chọn vị trí trong modal "Lưu kết quả": cuộn chuột zoom được ngay
     // (gestureHandling:'greedy', không cần giữ Ctrl), bấm bất kỳ đâu trên bản
-    // đồ để dời điểm đánh dấu tới đó (không chỉ kéo marker), có ô tìm địa chỉ
-    // (Places Autocomplete) và nút "Dùng vị trí hiện tại" - xem
-    // useCurrentLocationForSave() + save-report-modal.blade.php.
+    // đồ để dời điểm đánh dấu tới đó (không chỉ kéo marker), và nút "Vị trí
+    // của tôi" để lấy lại GPS - xem useCurrentLocationForSave() +
+    // save-report-modal.blade.php (đã bỏ ô tìm địa chỉ theo yêu cầu).
     initSaveMap(){
       const el = document.getElementById('saveReportMap');
       if(!el) return;
@@ -342,26 +341,6 @@ function agriApp(){
           // Bấm bất kỳ đâu trên bản đồ để dời marker tới đó luôn, không bắt
           // buộc phải kéo marker mới đổi được vị trí.
           saveMapInstance.addListener('click', e => place(e.latLng.lat(), e.latLng.lng()));
-
-          // Ô tìm địa chỉ (Places Autocomplete) - chỉ khởi tạo 1 lần vì input
-          // vẫn còn trong DOM giữa các lần mở modal (modal dùng x-show, không
-          // bị xoá khỏi DOM). Cần &libraries=places ở script Google Maps.
-          if(!saveSearchBoxInitialized && google.maps.places){
-            const searchInput = document.getElementById('saveLocationSearch');
-            if(searchInput){
-              const autocomplete = new google.maps.places.Autocomplete(searchInput, {
-                fields:['geometry'],
-                componentRestrictions:{ country:'vn' },
-              });
-              autocomplete.addListener('place_changed', () => {
-                const p = autocomplete.getPlace();
-                if(p && p.geometry && p.geometry.location){
-                  place(p.geometry.location.lat(), p.geometry.location.lng());
-                }
-              });
-              saveSearchBoxInitialized = true;
-            }
-          }
         } else {
           saveMapInstance.setCenter({ lat, lng });
           saveMarkerInstance.setPosition({ lat, lng });

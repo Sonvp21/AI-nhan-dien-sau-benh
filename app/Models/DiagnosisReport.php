@@ -17,7 +17,7 @@ class DiagnosisReport extends Model
         'probability', 'disease_probability', 'level', 'pathogen',
         'signs_in_photo', 'symptoms', 'treatment', 'prevention',
         'image_path', 'latitude', 'longitude', 'status',
-        'verified_at', 'verified_by', 'rejection_reason',
+        'verified_at', 'verified_by', 'rejection_reason', 'resolved_at',
     ];
 
     protected $casts = [
@@ -26,6 +26,7 @@ class DiagnosisReport extends Model
         'probability' => 'integer',
         'disease_probability' => 'integer',
         'verified_at' => 'datetime',
+        'resolved_at' => 'datetime',
     ];
 
     public function user()
@@ -46,6 +47,20 @@ class DiagnosisReport extends Model
     public function isVerified(): bool
     {
         return $this->status === self::STATUS_VERIFIED;
+    }
+
+    public function isResolved(): bool
+    {
+        return $this->resolved_at !== null;
+    }
+
+    /**
+     * Report đang "hoạt động" trên bản đồ dịch bệnh (cả public và dashboard
+     * vùng dịch admin): đã verified VÀ chưa được đánh dấu xử lý.
+     */
+    public function scopeActiveOnMap($query)
+    {
+        return $query->where('status', self::STATUS_VERIFIED)->whereNull('resolved_at');
     }
 
     public function imageUrl(): string
