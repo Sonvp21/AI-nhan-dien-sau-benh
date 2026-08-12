@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    // Dùng cho bản đồ dịch bệnh công khai và bản đồ chọn vị trí trong modal
+    // "Lưu kết quả chẩn đoán". Cần bật Maps JavaScript API cho key này trên
+    // Google Cloud Console.
+    'google_maps' => [
+        'key' => env('GOOGLE_MAPS_API_KEY'),
+    ],
+
 ];

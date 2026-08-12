@@ -1,27 +1,12 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Quản lý Bệnh — Admin</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<style>
-  :root{ --forest:#1f6d3c; --mist:#f2f7ee; --soil:#c9762c; --danger:#c1440e; }
-  body{font-family:ui-sans-serif,system-ui,sans-serif;background:var(--mist);}
-</style>
-</head>
-<body class="min-h-screen">
+@extends('layouts.admin')
 
-<header class="bg-white border-b px-6 py-4 flex items-center justify-between">
-  <h1 class="font-bold text-lg" style="color:var(--forest)">🌾 Admin AgriAI — Quản lý Bệnh</h1>
-  <a href="{{ route('admin.diseases.create') }}" class="text-sm font-semibold text-white px-4 py-2 rounded-lg" style="background:var(--forest)">+ Thêm bệnh mới</a>
-</header>
+@section('title', 'Quản lý Bệnh')
 
-<main class="max-w-6xl mx-auto px-6 py-6">
-
-  @if(session('success'))
-    <div class="mb-4 px-4 py-3 rounded-lg text-sm" style="background:#e2efd9;color:var(--forest)">{{ session('success') }}</div>
-  @endif
+@section('content')
+  <div class="flex items-center justify-between mb-5">
+    <h1 class="text-xl font-bold" style="color:#12341d">Quản lý danh mục bệnh</h1>
+    <a href="{{ route('admin.diseases.create') }}" class="text-sm font-semibold text-white px-4 py-2 rounded-lg" style="background:var(--forest)">+ Thêm bệnh mới</a>
+  </div>
 
   <form method="GET" class="flex flex-wrap gap-3 mb-5 bg-white p-4 rounded-xl border">
     <select name="crop_key" class="text-sm border rounded-lg px-3 py-2">
@@ -90,6 +75,4 @@
   </div>
 
   <div class="mt-4">{{ $diseases->links() }}</div>
-</main>
-</body>
-</html>
+@endsection

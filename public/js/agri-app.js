@@ -19,9 +19,27 @@ window.addEventListener('load', function(){
 function agriApp(){
   const ASSETS = (typeof window !== 'undefined' && window.AGRI_ASSETS) ? window.AGRI_ASSETS : { crops:{} };
 
+  // Instance Google Maps/Marker của modal "Lưu kết quả" - để NGOÀI object
+  // reactive cua Alpine (khong gan vao this.xxx) de tranh Alpine boc Proxy
+  // len cac object cua thu vien Google Maps, co the lam vo hanh vi noi bo.
+  let saveMapInstance = null;
+  let saveMarkerInstance = null;
+
   return {
     selectedCrop:'Chè',
     symptomPage:0,
+
+    // ==== Đăng nhập + lưu kết quả chẩn đoán lên bản đồ (chờ admin duyệt) ====
+    // xem save-report-modal.blade.php + DiagnosisReportController.
+    currentUser: (typeof window !== 'undefined' && window.AGRI_USER) ? window.AGRI_USER : null,
+    saveModalOpen:false,
+    saveSubmitting:false,
+    saveError:null,
+    savePosition:{ lat:null, lng:null },
+
+    // Drawer menu ở mobile (< md) - thay cho banner + menu account đã ẩn ở
+    // mobile, mở bằng nút hamburger trong topbar (xem agri-index.blade.php).
+    mobileDrawerOpen:false,
 
     // Modal xem chi tiet 1 benh KHAC ngoai benh chinh (xem uniqueDiseaseNames()
     // va openOtherDisease() ben duoi + disease-detail-modal.blade.php)
@@ -186,6 +204,128 @@ function agriApp(){
     openOtherDisease(d){
       this.selectedOtherDisease = d;
       this.otherDiseaseModalOpen = true;
+    },
+
+    // ==== Modal "Lưu kết quả chẩn đoán" (nút xuất hiện ngay sau khi có kết
+    // quả trong guide-result-panel.blade.php) - lưu bệnh CHÍNH (đầu danh sách
+    // detections, hoặc info.disease với dữ liệu mẫu) + ảnh vừa dùng để chẩn
+    // đoán + vị trí GPS/marker kéo tay, gửi lên server ở trạng thái "pending".
+    get saveMainDetection(){
+      return (this.info.isLive && this.info.detections && this.info.detections.length) ? this.info.detections[0] : null;
+    },
+    get saveDiseaseName(){
+      return this.saveMainDetection ? this.saveMainDetection.disease : this.info.disease;
+    },
+    get saveProbability(){
+      return this.saveMainDetection ? (this.saveMainDetection.probability ?? null) : null;
+    },
+    openSaveModal(){
+      if(!this.currentUser){
+        window.location.href = (window.AGRI_ROUTES && window.AGRI_ROUTES.auth) || '/auth';
+        return;
+      }
+      if(!this.confirmedPhotos.length || !this.confirmedPhotos[0].file){
+        alert('Không tìm thấy ảnh gốc để lưu (ảnh chụp từ xa qua mã QR chưa hỗ trợ lưu report).');
+        return;
+      }
+      this.saveError = null;
+      this.savePosition = { lat:null, lng:null };
+      this.saveModalOpen = true;
+      this.$nextTick(() => this.initSaveMap());
+    },
+    closeSaveModal(){
+      this.saveModalOpen = false;
+    },
+    initSaveMap(){
+      const el = document.getElementById('saveReportMap');
+      if(!el) return;
+
+      const place = (lat, lng) => {
+        this.savePosition = { lat, lng };
+        if(typeof google === 'undefined' || !google.maps){
+          this.saveError = 'Không tải được Google Maps (thiếu API key hoặc mất mạng). Bạn vẫn có thể lưu với vị trí GPS hiện tại.';
+          return;
+        }
+        if(!saveMapInstance){
+          saveMapInstance = new google.maps.Map(el, { center:{ lat, lng }, zoom:15 });
+          saveMarkerInstance = new google.maps.Marker({ position:{ lat, lng }, map:saveMapInstance, draggable:true });
+          saveMarkerInstance.addListener('dragend', () => {
+            const p = saveMarkerInstance.getPosition();
+            this.savePosition = { lat:p.lat(), lng:p.lng() };
+          });
+        } else {
+          saveMapInstance.setCenter({ lat, lng });
+          saveMarkerInstance.setPosition({ lat, lng });
+          google.maps.event.trigger(saveMapInstance, 'resize');
+        }
+      };
+
+      // Mặc định GPS hiện tại của người dùng; nếu bị chặn/không có thì tạm
+      // đặt ở Thái Nguyên (vị trí trung tâm) để người dùng tự kéo lại.
+      if(navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(
+          pos => place(pos.coords.latitude, pos.coords.longitude),
+          () => place(21.5944, 105.8480),
+          { timeout:6000 }
+        );
+      } else {
+        place(21.5944, 105.8480);
+      }
+    },
+    async submitSaveReport(){
+      if(this.saveSubmitting || this.savePosition.lat === null) return;
+      if(!this.confirmedPhotos.length || !this.confirmedPhotos[0].file){
+        this.saveError = 'Không tìm thấy ảnh gốc để lưu.';
+        return;
+      }
+      this.saveSubmitting = true;
+      this.saveError = null;
+
+      try{
+        const info = this.info;
+        const main = this.saveMainDetection;
+        const appendIfPresent = (fd, key, val) => { if(val !== null && val !== undefined && val !== '') fd.append(key, val); };
+
+        const fd = new FormData();
+        fd.append('crop', this.cropApiKey[this.selectedCrop] || this.selectedCrop);
+        fd.append('crop_label', this.selectedCrop);
+        fd.append('disease_name', this.saveDiseaseName || 'Không xác định');
+        appendIfPresent(fd, 'disease_key', main ? main.nameEn : info.nameEn);
+        appendIfPresent(fd, 'probability', this.saveProbability);
+        appendIfPresent(fd, 'disease_probability', info.diseaseProbability);
+        appendIfPresent(fd, 'level', main ? main.level : info.level);
+        appendIfPresent(fd, 'pathogen', main ? main.pathogen : info.pathogen);
+        appendIfPresent(fd, 'signs_in_photo', main ? main.signsInPhoto : info.signsInPhoto);
+        appendIfPresent(fd, 'symptoms', main ? main.symptomsText : info.symptomsText);
+        appendIfPresent(fd, 'treatment', main ? main.treatment : info.treatment);
+        appendIfPresent(fd, 'prevention', main ? main.prevention : info.prevention);
+        fd.append('latitude', this.savePosition.lat);
+        fd.append('longitude', this.savePosition.lng);
+        fd.append('image', this.confirmedPhotos[0].file);
+
+        const res = await fetch(window.AGRI_ROUTES.saveReport, {
+          method:'POST',
+          headers:{ 'X-CSRF-TOKEN':window.AGRI_CSRF, 'Accept':'application/json' },
+          body:fd,
+        });
+
+        if(res.status === 401){
+          window.location.href = window.AGRI_ROUTES.auth;
+          return;
+        }
+        if(!res.ok){
+          const err = await res.json().catch(() => null);
+          const firstError = err && err.errors ? Object.values(err.errors)[0][0] : null;
+          throw new Error(firstError || (err && err.message) || ('Lưu không thành công (lỗi ' + res.status + ').'));
+        }
+
+        this.saveModalOpen = false;
+        alert('Đã lưu kết quả chẩn đoán! Report sẽ hiện lên bản đồ sau khi admin kiểm duyệt.');
+      }catch(err){
+        this.saveError = err.message || 'Có lỗi xảy ra, vui lòng thử lại.';
+      }finally{
+        this.saveSubmitting = false;
+      }
     },
 
     // ==== dropzone / modal chụp ảnh, chọn ảnh ====

@@ -12,7 +12,17 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->alias([
+            'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
+        ]);
+
+        // Chưa đăng nhập mà vào trang cần auth -> đưa về trang /auth (đăng
+        // nhập/đăng ký chung 1 trang). Đã đăng nhập mà vào lại /auth (middleware
+        // 'guest') -> đưa về trang chủ (admin thì về thẳng dashboard admin).
+        $middleware->redirectGuestsTo(fn () => route('agri.auth'));
+        $middleware->redirectUsersTo(
+            fn ($request) => $request->user()?->is_admin ? route('admin.dashboard') : route('agri.index')
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
