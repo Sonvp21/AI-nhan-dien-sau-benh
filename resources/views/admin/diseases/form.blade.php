@@ -1,33 +1,21 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ $disease->exists ? 'Sửa bệnh' : 'Thêm bệnh mới' }} — Admin</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<style>
-  :root{ --forest:#1f6d3c; --mist:#f2f7ee; }
-  body{font-family:ui-sans-serif,system-ui,sans-serif;background:var(--mist);}
-</style>
-</head>
-<body class="min-h-screen">
+@extends('layouts.admin')
 
-<header class="bg-white border-b px-6 py-4">
+@section('title', $disease->exists ? 'Sửa bệnh' : 'Thêm bệnh mới')
+
+@section('content')
   <a href="{{ route('admin.diseases.index') }}" class="text-sm font-semibold" style="color:var(--forest)">← Quay lại danh sách bệnh</a>
-</header>
 
-<main class="max-w-2xl mx-auto px-6 py-8">
-  <h1 class="text-xl font-bold mb-6">{{ $disease->exists ? 'Sửa bệnh: '.$disease->name_vi : 'Thêm bệnh mới' }}</h1>
+  <h1 class="text-xl font-bold mt-4 mb-6">{{ $disease->exists ? 'Sửa bệnh: '.$disease->name_vi : 'Thêm bệnh mới' }}</h1>
 
   @if($errors->any())
-    <div class="mb-5 bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg">
+    <div class="mb-5 bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg max-w-2xl">
       <ul class="list-disc list-inside">
         @foreach($errors->all() as $e) <li>{{ $e }}</li> @endforeach
       </ul>
     </div>
   @endif
 
-  <form method="POST" action="{{ $disease->exists ? route('admin.diseases.update', $disease) : route('admin.diseases.store') }}" class="bg-white p-6 rounded-xl border space-y-5">
+  <form method="POST" action="{{ $disease->exists ? route('admin.diseases.update', $disease) : route('admin.diseases.store') }}" class="bg-white p-6 rounded-xl border space-y-5 max-w-2xl">
     @csrf
     @if($disease->exists) @method('PUT') @endif
 
@@ -106,6 +94,4 @@
       <a href="{{ route('admin.diseases.index') }}" class="text-sm font-semibold px-5 py-2.5 rounded-lg border">Hủy</a>
     </div>
   </form>
-</main>
-</body>
-</html>
+@endsection

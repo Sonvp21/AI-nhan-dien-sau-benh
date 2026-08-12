@@ -69,6 +69,15 @@
       </div>
     </template>
 
+    <!-- Nút "Lưu": hiện ngay sau khi chẩn đoán xong (trừ khi ảnh không khớp cây
+         đã chọn), mở modal lưu report chờ admin duyệt - xem openSaveModal()
+         trong agri-app.js + save-report-modal.blade.php -->
+    <template x-if="!info.cropMismatch">
+      <button type="button" @click="openSaveModal()" class="mt-3 px-4 py-2 rounded-lg text-[13px] font-semibold flex items-center gap-2 transition hover:opacity-85" style="background:#fff;border:1px solid #1f6d3c;color:#1f6d3c">
+        <i data-lucide="map-pin" class="w-4 h-4"></i> Lưu kết quả lên bản đồ
+      </button>
+    </template>
+
     <!-- Ảnh AI thật nhưng KHÔNG tìm thấy vùng bệnh nào (khác với "cây khỏe mạnh") -->
     <template x-if="!info.cropMismatch && info.isLive && info.found === false">
       <p class="text-[12.5px] 2xl:text-[13.5px] mt-2.5 px-3 py-2 rounded-lg" style="background:#fff7ed;color:#c9762c;border:1px dashed #f0d9c4">

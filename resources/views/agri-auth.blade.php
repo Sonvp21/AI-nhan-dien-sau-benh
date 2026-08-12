@@ -22,109 +22,93 @@
   .btn-press{transition:transform .12s ease;}
   @keyframes riseFade{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
   .rise{animation:riseFade .5s cubic-bezier(.16,1,.3,1) both;}
-  .otp-box{width:48px;height:56px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;}
   [x-cloak]{display:none!important;}
 </style>
 </head>
-<body x-data="authFlow()" class="min-h-screen flex items-center justify-center p-5">
+{{-- step ban đầu: nếu form đăng ký vừa submit bị lỗi validate thì mở lại
+     đúng form đó (đọc qua hidden input _form), không thì vào THẲNG màn hình
+     đăng nhập (không còn bước "welcome" chọn giữa đăng nhập/đăng ký nữa). --}}
+<body x-data="authFlow('{{ old('_form') === 'register' ? 'register' : 'login' }}')" class="min-h-screen flex items-center justify-center p-5">
 
 <div class="w-full max-w-sm">
 
-  <!-- WELCOME -->
-  <div x-show="step==='welcome'" x-cloak class="rise text-center">
-    <div class="w-20 h-20 rounded-3xl bg-[var(--forest)] flex items-center justify-center text-4xl mx-auto mb-6">🌾</div>
-    <h1 class="font-display font-bold text-[26px] text-[var(--forest)]">AgriAI</h1>
-    <p class="text-[13px] text-[#5B6F63] mt-2 leading-relaxed">Nhận diện sâu bệnh, dự báo năng suất<br>và phân tích dữ liệu nông nghiệp bằng AI</p>
+  @if (session('success'))
+    <div class="card p-4 mb-4 rise text-center text-[13px] font-semibold" style="color:var(--forest)">{{ session('success') }}</div>
+  @endif
 
-    <button @click="step='login'" class="btn-press w-full mt-8 bg-[var(--forest)] text-white font-semibold rounded-2xl py-3.5 text-[14px]">
-      Đăng nhập
-    </button>
-    <button @click="step='register'" class="btn-press w-full mt-3 bg-white border border-[var(--forest)]/20 text-[var(--forest)] font-semibold rounded-2xl py-3.5 text-[14px]">
-      Tạo tài khoản mới
-    </button>
+  <!-- LOGO + TAGLINE: luôn hiện, phía trên cả 2 form -->
+  <div class="text-center mb-5 rise">
+    <img src="{{ asset('image/logo.jpg') }}" alt="Logo GIRC" class="w-20 h-20 rounded-3xl object-cover mx-auto mb-4 shadow-lg">
+    <h1 class="font-display font-bold text-[22px] text-[var(--forest)]">Bác sĩ cây trồng AI</h1>
+    <p class="text-[13px] text-[#5B6F69] mt-1.5">Nhận diện sâu bệnh ở cây trồng bằng công nghệ AI</p>
   </div>
 
   <!-- LOGIN -->
-  <div x-show="step==='login'" x-cloak class="card p-7 rise">
-    <button @click="step='welcome'" class="text-[13px] font-semibold text-[var(--forest)]">← Quay lại</button>
-    <h2 class="font-display font-bold text-[20px] mt-4">Đăng nhập</h2>
-    <p class="text-[12px] text-[#5B6F63] mt-1">Nhập số điện thoại đã đăng ký</p>
+  <form method="POST" action="{{ route('agri.auth.login') }}" x-show="step==='login'" x-cloak class="card p-7 rise">
+    @csrf
+    <input type="hidden" name="_form" value="login">
+    <h2 class="font-display font-bold text-[20px]">Đăng nhập</h2>
+    <p class="text-[12px] text-[#5B6F69] mt-1">Nhập số điện thoại đã đăng ký</p>
 
-    <label class="text-[12px] font-semibold text-[#5B6F63] block mt-5">Số điện thoại</label>
-    <input type="tel" x-model="phone" placeholder="0912 345 678" class="w-full mt-1.5 bg-[var(--mist)] rounded-xl px-4 py-3 text-[14px] font-mono outline-none focus:ring-2 ring-[var(--forest)]">
+    <label class="text-[12px] font-semibold text-[#5B6F69] block mt-5">Số điện thoại</label>
+    <input type="tel" name="phone" value="{{ old('_form') === 'login' ? old('phone') : '' }}" placeholder="0912345678" class="w-full mt-1.5 bg-[var(--mist)] rounded-xl px-4 py-3 text-[14px] font-mono outline-none focus:ring-2 ring-[var(--forest)]" autofocus>
+    @if (old('_form') === 'login')
+      @error('phone')<p class="text-[12px] mt-1.5" style="color:var(--danger)">{{ $message }}</p>@enderror
+    @endif
 
-    <label class="text-[12px] font-semibold text-[#5B6F63] block mt-4">Mật khẩu</label>
-    <input type="password" x-model="password" placeholder="••••••••" class="w-full mt-1.5 bg-[var(--mist)] rounded-xl px-4 py-3 text-[14px] outline-none focus:ring-2 ring-[var(--forest)]">
+    <label class="text-[12px] font-semibold text-[#5B6F69] block mt-4">Mật khẩu</label>
+    <input type="password" name="password" placeholder="••••••••" class="w-full mt-1.5 bg-[var(--mist)] rounded-xl px-4 py-3 text-[14px] outline-none focus:ring-2 ring-[var(--forest)]">
+    @if (old('_form') === 'login')
+      @error('password')<p class="text-[12px] mt-1.5" style="color:var(--danger)">{{ $message }}</p>@enderror
+    @endif
 
-    <button @click="sendOtp()" class="btn-press w-full mt-6 bg-[var(--forest)] text-white font-semibold rounded-2xl py-3.5 text-[14px]" :disabled="!phone">
+    <button type="submit" class="btn-press w-full mt-6 bg-[var(--forest)] text-white font-semibold rounded-2xl py-3.5 text-[14px]">
       Đăng nhập
     </button>
-    <p class="text-center text-[12px] text-[#5B6F63] mt-4">Quên mật khẩu?</p>
-  </div>
+    <button type="button" @click="step='register'" class="btn-press w-full mt-3 bg-white border border-[var(--forest)]/20 text-[var(--forest)] font-semibold rounded-2xl py-3.5 text-[14px]">
+      Tạo tài khoản mới
+    </button>
+  </form>
 
   <!-- REGISTER -->
-  <div x-show="step==='register'" x-cloak class="card p-7 rise">
-    <button @click="step='welcome'" class="text-[13px] font-semibold text-[var(--forest)]">← Quay lại</button>
+  <form method="POST" action="{{ route('agri.auth.register') }}" x-show="step==='register'" x-cloak class="card p-7 rise">
+    @csrf
+    <input type="hidden" name="_form" value="register">
+    <button type="button" @click="step='login'" class="text-[13px] font-semibold text-[var(--forest)]">← Quay lại đăng nhập</button>
     <h2 class="font-display font-bold text-[20px] mt-4">Tạo tài khoản</h2>
-    <p class="text-[12px] text-[#5B6F63] mt-1">Bắt đầu quản lý nông trại thông minh</p>
+    <p class="text-[12px] text-[#5B6F69] mt-1">Bắt đầu quản lý nông trại thông minh</p>
 
-    <label class="text-[12px] font-semibold text-[#5B6F63] block mt-5">Họ và tên</label>
-    <input type="text" x-model="fullname" placeholder="Nguyễn Văn Sơn" class="w-full mt-1.5 bg-[var(--mist)] rounded-xl px-4 py-3 text-[14px] outline-none focus:ring-2 ring-[var(--forest)]">
+    <label class="text-[12px] font-semibold text-[#5B6F69] block mt-5">Họ và tên</label>
+    <input type="text" name="name" value="{{ old('_form') === 'register' ? old('name') : '' }}" placeholder="Nguyễn Văn Sơn" class="w-full mt-1.5 bg-[var(--mist)] rounded-xl px-4 py-3 text-[14px] outline-none focus:ring-2 ring-[var(--forest)]">
+    @if (old('_form') === 'register')
+      @error('name')<p class="text-[12px] mt-1.5" style="color:var(--danger)">{{ $message }}</p>@enderror
+    @endif
 
-    <label class="text-[12px] font-semibold text-[#5B6F63] block mt-4">Số điện thoại</label>
-    <input type="tel" x-model="phone" placeholder="0912 345 678" class="w-full mt-1.5 bg-[var(--mist)] rounded-xl px-4 py-3 text-[14px] font-mono outline-none focus:ring-2 ring-[var(--forest)]">
+    <label class="text-[12px] font-semibold text-[#5B6F69] block mt-4">Số điện thoại</label>
+    <input type="tel" name="phone" value="{{ old('_form') === 'register' ? old('phone') : '' }}" placeholder="0912345678" class="w-full mt-1.5 bg-[var(--mist)] rounded-xl px-4 py-3 text-[14px] font-mono outline-none focus:ring-2 ring-[var(--forest)]">
+    @if (old('_form') === 'register')
+      @error('phone')<p class="text-[12px] mt-1.5" style="color:var(--danger)">{{ $message }}</p>@enderror
+    @endif
 
-    <label class="text-[12px] font-semibold text-[#5B6F63] block mt-4">Tỉnh/Thành phố</label>
-    <select x-model="province" class="w-full mt-1.5 bg-[var(--mist)] rounded-xl px-4 py-3 text-[14px] outline-none focus:ring-2 ring-[var(--forest)]">
-      <option>Thái Nguyên</option>
-      <option>Hà Nội</option>
-      <option>Lào Cai</option>
-      <option>Khác</option>
-    </select>
+    <label class="text-[12px] font-semibold text-[#5B6F69] block mt-4">Mật khẩu</label>
+    <input type="password" name="password" placeholder="Ít nhất 6 ký tự" class="w-full mt-1.5 bg-[var(--mist)] rounded-xl px-4 py-3 text-[14px] outline-none focus:ring-2 ring-[var(--forest)]">
+    @if (old('_form') === 'register')
+      @error('password')<p class="text-[12px] mt-1.5" style="color:var(--danger)">{{ $message }}</p>@enderror
+    @endif
 
-    <button @click="sendOtp()" class="btn-press w-full mt-6 bg-[var(--forest)] text-white font-semibold rounded-2xl py-3.5 text-[14px]" :disabled="!phone || !fullname">
-      Tiếp tục
+    <label class="text-[12px] font-semibold text-[#5B6F69] block mt-4">Nhập lại mật khẩu</label>
+    <input type="password" name="password_confirmation" placeholder="••••••••" class="w-full mt-1.5 bg-[var(--mist)] rounded-xl px-4 py-3 text-[14px] outline-none focus:ring-2 ring-[var(--forest)]">
+
+    <button type="submit" class="btn-press w-full mt-6 bg-[var(--forest)] text-white font-semibold rounded-2xl py-3.5 text-[14px]">
+      Tạo tài khoản
     </button>
-  </div>
-
-  <!-- OTP -->
-  <div x-show="step==='otp'" x-cloak class="card p-7 rise">
-    <button @click="step='welcome'" class="text-[13px] font-semibold text-[var(--forest)]">← Quay lại</button>
-    <h2 class="font-display font-bold text-[20px] mt-4">Xác thực OTP</h2>
-    <p class="text-[12px] text-[#5B6F63] mt-1">Mã gồm 4 số đã gửi tới <span class="font-mono font-semibold" x-text="phone"></span></p>
-
-    <div class="flex gap-2.5 mt-6 justify-center">
-      <template x-for="i in 4" :key="i">
-        <input type="text" maxlength="1" x-model="otp[i-1]" @input="$event.target.value.length===1 && $event.target.nextElementSibling?.focus()"
-               class="otp-box bg-[var(--mist)] rounded-xl outline-none focus:ring-2 ring-[var(--forest)]">
-      </template>
-    </div>
-
-    <button @click="verifyOtp()" class="btn-press w-full mt-6 bg-[var(--forest)] text-white font-semibold rounded-2xl py-3.5 text-[14px]">
-      Xác nhận
-    </button>
-    <p class="text-center text-[12px] text-[#5B6F63] mt-4">Không nhận được mã? <span class="font-semibold text-[var(--forest)]">Gửi lại</span></p>
-  </div>
-
-  <!-- SUCCESS -->
-  <div x-show="step==='success'" x-cloak class="card p-8 rise text-center">
-    <div class="w-16 h-16 rounded-full bg-[var(--leaf-soft)] flex items-center justify-center text-3xl mx-auto">✓</div>
-    <h2 class="font-display font-bold text-[19px] mt-4">Chào mừng đến AgriAI!</h2>
-    <p class="text-[13px] text-[#5B6F63] mt-1.5">Tài khoản của bạn đã sẵn sàng</p>
-    <a href="{{ route('agri.index') }}" class="btn-press block w-full mt-6 bg-[var(--forest)] text-white font-semibold rounded-2xl py-3.5 text-[14px]">
-      Vào ứng dụng
-    </a>
-  </div>
+  </form>
 </div>
 
 <script>
-function authFlow(){
+function authFlow(initialStep){
   return {
-    step:'welcome',
-    phone:'', password:'', fullname:'', province:'Thái Nguyên',
-    otp:['','','',''],
-    sendOtp(){ this.step='otp'; },
-    verifyOtp(){ this.step='success'; }
+    step: initialStep || 'login',
   }
 }
 </script>
