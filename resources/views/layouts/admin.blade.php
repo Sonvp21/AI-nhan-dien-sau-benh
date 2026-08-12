@@ -71,5 +71,9 @@
 <script>
   document.addEventListener('DOMContentLoaded', function(){ if (typeof lucide !== 'undefined') lucide.createIcons(); });
 </script>
+
+{{-- Chỗ cho các trang con chèn thêm script riêng (vd Google Maps JS API ở
+     admin/diagnosis-reports/show.blade.php) qua @push('scripts'). --}}
+@stack('scripts')
 </body>
 </html>
