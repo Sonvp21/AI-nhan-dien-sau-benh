@@ -1,13 +1,16 @@
 """
-Chan doan benh cay bang Gemini, thong qua WebAI-to-API dang chay san tren may
-(Docker, cong 6969 - xem F:\\gemini2api\\gemini2api\\docker-compose.yml + config.conf).
-Day KHONG phai Gemini API chinh thuc co API key - la cach dung lai phien dang nhap
-Gemini web ca nhan (cookie), giong het co che dang dung cho du an GIRC (assess_location.py).
+Chan doan benh cay bang Gemini, thong qua WebAI-to-API dang chay Docker tren
+CHINH VPS nay (cong 6969, chi bind localhost, khong public truc tiep - xem
+~/gemini2api/docker-compose.yml + config.conf tren VPS). Duoc reverse-proxy
+qua OpenLiteSpeed ra domain rieng https://webai.girc.edu.vn (xem SETUP_NOTES.md
+muc 0). Day KHONG phai Gemini API chinh thuc co API key - la cach dung lai
+phien dang nhap Gemini web ca nhan (cookie), giong het co che dang dung cho
+du an GIRC (assess_location.py).
 
 LUU Y quan trong (xem README cua WebAI-to-API): du an do ghi ro "intended for research
 and educational purposes only" - khong danh cho muc dich thuong mai. Cookie co the het
 han theo thoi gian, can dang nhap lai gemini.google.com va cap nhat trong config.conf
-(hoac qua http://localhost:6969/admin) neu thay loi upstream.
+(hoac qua https://webai.girc.edu.vn/admin) neu thay loi upstream.
 
 Cach hoat dong:
   1. app.py luu tam anh upload vao thu muc tinh (StaticFiles), tao ra 1 URL that
@@ -42,14 +45,13 @@ import re
 
 from openai import OpenAI
 
-# Local: WebAI-to-API chay Docker CUNG may voi FastAPI nay -> "localhost:6969" goi
-# thang duoc. Khi FastAPI deploy len VPS nhung docker WebAI-to-API VAN o lai may
-# Windows local (khong dua len VPS) -> "localhost:6969" tren VPS la SAI (do la
-# localhost cua chinh VPS, khong phai may Windows), bat buoc phai expose port 6969
-# ra internet (vd them 1 Public Hostname nua trong cung Cloudflare Tunnel dang
-# dung cho predict.girc-ai.com, tro ve "localhost:6969") roi dat bien moi truong
-# WEBAI_BASE_URL tren VPS tro toi domain that do, vd "https://webai.girc-ai.com/v1".
-WEBAI_BASE_URL = os.environ.get("WEBAI_BASE_URL", "http://localhost:6969/v1")
+# Ke tu khi Docker WebAI-to-API duoc dua len CHINH VPS nay (khong con chay tren
+# may Windows local qua Cloudflare Tunnel nua), goi qua domain rieng da reverse-proxy
+# san bang OpenLiteSpeed: https://webai.girc.edu.vn/v1 (xem SETUP_NOTES.md muc 0+5).
+# Van co the doi lai thanh "http://localhost:6969/v1" de goi thang khong qua domain
+# (nhanh hon 1 chut vi bo qua vong OpenLiteSpeed) - chi can set bien moi truong
+# WEBAI_BASE_URL trong systemd service (agriai.service) de override gia tri default nay.
+WEBAI_BASE_URL = os.environ.get("WEBAI_BASE_URL", "https://webai.girc.edu.vn/v1")
 WEBAI_API_KEY = "not-needed"  # WebAI-to-API khong can key that, chi can chuoi khong rong
 GEMINI_MODEL = "gemini-3.0-pro"
 
@@ -246,7 +248,7 @@ def diagnose_with_gemini(image_url: str, crop_key: str) -> dict:
     except Exception as exc:
         raise GeminiDiagnosisError(
             f"Không gọi được WebAI-to-API tại {WEBAI_BASE_URL} "
-            f"(kiểm tra container đang chạy + cookie còn hạn ở http://localhost:6969/admin): {exc}"
+            f"(kiểm tra container đang chạy + cookie còn hạn ở https://webai.girc.edu.vn/admin): {exc}"
         )
 
     reference_images = _extract_reference_images(raw_http_response)

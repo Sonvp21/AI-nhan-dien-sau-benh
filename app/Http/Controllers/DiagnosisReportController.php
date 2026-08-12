@@ -10,14 +10,16 @@ class DiagnosisReportController extends Controller
 {
     /**
      * Lưu 1 lần chẩn đoán (nút "Lưu" hiện ngay sau khi AI trả kết quả).
-     * Thông tin bệnh được client gửi lên đúng như những gì AI vừa trả (auto-fill),
-     * ảnh là ảnh vừa dùng để chẩn đoán, vị trí là GPS hiện tại hoặc marker người
-     * dùng tự kéo trên bản đồ nhỏ trong modal. Report luôn tạo ở trạng thái
-     * "pending" - chỉ lên bản đồ công khai sau khi admin duyệt.
+     * KHÔNG yêu cầu đăng nhập - ai cũng gửi được, chỉ cần nhập tên (sender_name)
+     * trong form. Thông tin bệnh được client gửi lên đúng như những gì AI vừa
+     * trả (auto-fill), ảnh là ảnh vừa dùng để chẩn đoán, vị trí là GPS hiện tại
+     * hoặc marker người dùng tự kéo trên bản đồ nhỏ trong modal. Report luôn
+     * tạo ở trạng thái "pending" - chỉ lên bản đồ công khai sau khi admin duyệt.
      */
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
+            'sender_name' => ['required', 'string', 'max:100'],
             'crop' => ['required', 'string', 'max:30'],
             'crop_label' => ['nullable', 'string', 'max:50'],
             'disease_name' => ['required', 'string', 'max:255'],
@@ -38,8 +40,10 @@ class DiagnosisReportController extends Controller
         $imagePath = $request->file('image')->store('diagnosis-reports', 'public');
         unset($data['image']);
 
-        $report = $request->user()->diagnosisReports()->create([
+        $report = DiagnosisReport::create([
             ...$data,
+            // Nếu tình cờ đang đăng nhập vẫn gắn user_id (không bắt buộc).
+            'user_id' => $request->user()?->id,
             'image_path' => $imagePath,
             'status' => DiagnosisReport::STATUS_PENDING,
         ]);
@@ -48,15 +52,5 @@ class DiagnosisReportController extends Controller
             'message' => 'Đã lưu kết quả chẩn đoán. Report sẽ hiện lên bản đồ sau khi admin kiểm duyệt.',
             'report' => $report,
         ], 201);
-    }
-
-    /**
-     * Lịch sử các lần chẩn đoán người dùng hiện tại đã lưu (mọi trạng thái).
-     */
-    public function history(Request $request)
-    {
-        $reports = $request->user()->diagnosisReports()->latest()->paginate(12);
-
-        return view('agri-diagnosis-history', ['reports' => $reports]);
     }
 }

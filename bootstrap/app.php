@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
+            'track.visit' => \App\Http\Middleware\TrackSiteVisit::class,
         ]);
 
         // Chưa đăng nhập mà vào trang cần auth -> đưa về trang /auth (đăng

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\DiagnosisReport;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Storage;
 
 class DiagnosisReportController extends Controller
 {
@@ -69,5 +70,20 @@ class DiagnosisReportController extends Controller
         ]);
 
         return redirect()->back()->with('success', 'Đã từ chối report này.');
+    }
+
+    /**
+     * Xóa hẳn 1 yêu cầu (bất kể trạng thái pending/verified/rejected) - xóa cả
+     * ảnh đã lưu trên storage để tránh rác file, không thể khôi phục lại.
+     */
+    public function destroy(DiagnosisReport $diagnosisReport): RedirectResponse
+    {
+        if ($diagnosisReport->image_path) {
+            Storage::disk('public')->delete($diagnosisReport->image_path);
+        }
+
+        $diagnosisReport->delete();
+
+        return redirect()->route('admin.diagnosis-reports.index')->with('success', 'Đã xóa yêu cầu.');
     }
 }

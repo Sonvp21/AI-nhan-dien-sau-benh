@@ -1,45 +1,76 @@
 {{-- ================= MODAL: Lưu kết quả chẩn đoán =================
      Mở qua openSaveModal() trong agri-app.js ngay sau khi có kết quả (nút "Lưu
-     kết quả" ở guide-result-panel.blade.php). Thông tin bệnh tự điền từ
+     kết quả" ở guide-result-panel.blade.php). KHÔNG yêu cầu đăng nhập - chỉ cần
+     nhập tên (saveSenderName) là gửi được. Thông tin bệnh tự điền từ
      info/liveResult, ảnh lấy từ confirmedPhotos[0], vị trí lấy từ GPS hoặc do
-     người dùng tự kéo marker trên bản đồ Google Maps nhỏ trong modal. Submit
-     xong report ở trạng thái "pending", chỉ lên bản đồ công khai sau khi admin
-     duyệt (xem DiagnosisReportController + Admin\DiagnosisReportController). --}}
-<div x-show="saveModalOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(18,52,29,.45)" @click.self="closeSaveModal()">
-  <div class="bg-white rounded-2xl w-full max-w-md 2xl:max-w-lg p-6 2xl:p-7 relative shadow-xl max-h-[90vh] overflow-y-auto">
-    <button @click="closeSaveModal()" class="absolute top-3.5 right-3.5 w-7 h-7 rounded-full flex items-center justify-center shrink-0" style="background:#fbf1ea;color:#c1440e"><i data-lucide="x" class="w-4 h-4"></i></button>
+     người dùng tự kéo marker / bấm / tìm địa chỉ trên bản đồ Google Maps nhỏ
+     trong modal (xem initSaveMap() trong agri-app.js). Submit xong report ở
+     trạng thái "pending", chỉ lên bản đồ công khai sau khi admin duyệt (xem
+     DiagnosisReportController + Admin\DiagnosisReportController). --}}
+<div x-show="saveModalOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(18,52,29,.5)" @click.self="closeSaveModal()">
+  <div class="bg-white rounded-2xl w-full max-w-md 2xl:max-w-lg relative shadow-2xl max-h-[92vh] overflow-y-auto">
 
-    <p class="text-[19px] 2xl:text-[20px] font-bold pr-8" style="color:#12341d">Lưu kết quả chẩn đoán</p>
-    <p class="text-[12.5px] 2xl:text-[13px] mt-1" style="color:#6b7268">Kết quả sẽ được gửi cho quản trị viên kiểm duyệt trước khi hiện lên bản đồ dịch bệnh công khai.</p>
-
-    <!-- Ảnh + thông tin bệnh (tự điền, chỉ đọc) -->
-    <div class="flex gap-3 mt-4">
-      <img x-show="confirmedPhotos.length" :src="confirmedPhotos[0] && confirmedPhotos[0].url" class="w-20 h-20 rounded-lg object-cover shrink-0" style="background:#f2f7ee">
-      <div class="min-w-0">
-        <p class="text-[15px] font-bold" style="color:#c1440e" x-text="saveDiseaseName"></p>
-        <p class="text-[12.5px]" style="color:#6b7268" x-text="selectedCrop + (saveProbability !== null ? ' · ' + saveProbability + '%' : '')"></p>
+    <!-- Header: nền gradient, icon tròn, dễ nhận biết ngay là bước cuối cùng -->
+    <div class="px-6 2xl:px-7 pt-6 2xl:pt-7 pb-5 rounded-t-2xl" style="background:linear-gradient(135deg,#1f6d3c,#164f2b)">
+      <button @click="closeSaveModal()" class="absolute top-3.5 right-3.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition hover:bg-white/10" style="color:#fff"><i data-lucide="x" class="w-4 h-4"></i></button>
+      <div class="flex items-center gap-3 pr-8">
+        <span class="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style="background:rgba(255,255,255,.15);color:#fff"><i data-lucide="map-pin-plus" class="w-5 h-5"></i></span>
+        <div>
+          <p class="text-[18px] 2xl:text-[19px] font-bold text-white">Lưu kết quả chẩn đoán</p>
+          <p class="text-[12px] 2xl:text-[12.5px] mt-0.5" style="color:#c9e6d3">Admin sẽ kiểm duyệt trước khi hiện lên bản đồ</p>
+        </div>
       </div>
     </div>
 
-    <!-- Thông tin người gửi (từ auth, chỉ đọc) -->
-    <div class="mt-3 px-3 py-2 rounded-lg text-[12.5px]" style="background:#f2f7ee;color:#4a5245">
-      Người gửi: <span class="font-semibold" x-text="(currentUser && currentUser.name) || ''"></span>
-      <span x-show="currentUser && currentUser.phone" x-text="'(' + (currentUser ? currentUser.phone : '') + ')'"></span>
+    <div class="p-6 2xl:p-7">
+      <!-- Ảnh + thông tin bệnh (tự điền, chỉ đọc) -->
+      <div class="flex gap-3 p-3 rounded-xl" style="background:#f2f7ee;border:1px solid #dbe8d2">
+        <img x-show="confirmedPhotos.length" :src="confirmedPhotos[0] && confirmedPhotos[0].url" class="w-16 h-16 rounded-lg object-cover shrink-0" style="background:#fff">
+        <div class="min-w-0 flex flex-col justify-center">
+          <p class="text-[15px] font-bold leading-snug" style="color:#c1440e" x-text="saveDiseaseName"></p>
+          <p class="text-[12.5px] mt-0.5" style="color:#6b7268" x-text="selectedCrop + (saveProbability !== null ? ' · ' + saveProbability + '%' : '')"></p>
+        </div>
+      </div>
+
+      <!-- Tên người gửi: không cần đăng nhập, chỉ cần nhập tên -->
+      <div class="mt-4">
+        <label class="text-[13px] font-semibold flex items-center gap-1.5" style="color:#12341d"><i data-lucide="user" class="w-3.5 h-3.5"></i> Tên của bạn</label>
+        <input type="text" x-model="saveSenderName" placeholder="Nhập họ tên..." maxlength="100"
+               class="w-full mt-1.5 px-3.5 py-2.5 rounded-lg text-[13.5px] border transition focus:outline-none" style="border-color:#dbe8d2" onfocus="this.style.borderColor='#1f6d3c'" onblur="this.style.borderColor='#dbe8d2'">
+      </div>
+
+      <!-- Bản đồ chọn vị trí: kéo/bấm vào bản đồ hoặc tìm địa chỉ để chọn lại -->
+      <p class="text-[13px] font-semibold mt-4 mb-1.5 flex items-center gap-1.5" style="color:#12341d"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i> Vị trí phát hiện bệnh</p>
+
+      <div class="flex gap-2 mb-2">
+        <div class="relative flex-1">
+          <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2" style="color:#8a8f83"></i>
+          <input id="saveLocationSearch" type="text" placeholder="Tìm địa chỉ, tên xã/huyện..."
+                 class="w-full pl-8 pr-3 py-2 rounded-lg text-[12.5px] border" style="border-color:#dbe8d2">
+        </div>
+        <button type="button" @click="useCurrentLocationForSave()" title="Dùng vị trí hiện tại" class="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition hover:opacity-85" style="background:#f2f7ee;border:1px solid #dbe8d2;color:#1f6d3c">
+          <i data-lucide="locate-fixed" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <p class="text-[11px] mb-1.5" style="color:#8a8f83">Kéo điểm đánh dấu, bấm vào bản đồ, hoặc tìm địa chỉ để chọn đúng vị trí. Cuộn chuột để zoom trực tiếp (không cần giữ Ctrl).</p>
+      <div id="saveReportMap" class="w-full h-56 2xl:h-64 rounded-xl overflow-hidden" style="background:#e2efd9;border:1px solid #dbe8d2"></div>
+
+      <div class="flex items-center gap-1.5 mt-2" x-show="savePosition.lat !== null">
+        <span class="text-[11px] font-mono px-2.5 py-1 rounded-full" style="background:#f2f7ee;color:#4a5245">
+          <span x-text="savePosition.lat && savePosition.lat.toFixed(5)"></span>, <span x-text="savePosition.lng && savePosition.lng.toFixed(5)"></span>
+        </span>
+      </div>
+
+      <p x-show="saveError" x-cloak class="text-[12.5px] mt-3 px-3 py-2.5 rounded-lg flex items-start gap-2" style="background:#fbe3dc;color:#c1440e">
+        <i data-lucide="alert-circle" class="w-3.5 h-3.5 mt-0.5 shrink-0"></i> <span x-text="saveError"></span>
+      </p>
+
+      <button @click="submitSaveReport()" :disabled="saveSubmitting || savePosition.lat === null || !saveSenderName.trim()" class="w-full mt-5 px-5 py-3.5 rounded-xl text-[14px] font-semibold text-white flex items-center justify-center gap-2 transition" :style="`background:linear-gradient(135deg,#1f6d3c,#164f2b);opacity:${(saveSubmitting || savePosition.lat === null || !saveSenderName.trim()) ? .55 : 1}`">
+        <i data-lucide="loader-circle" class="w-4 h-4 animate-spin" x-show="saveSubmitting"></i>
+        <i data-lucide="send" class="w-4 h-4" x-show="!saveSubmitting"></i>
+        <span x-text="saveSubmitting ? 'Đang lưu...' : 'Lưu kết quả'"></span>
+      </button>
     </div>
-
-    <!-- Bản đồ chọn vị trí: mặc định GPS hiện tại, kéo marker để chọn lại -->
-    <p class="text-[13px] font-semibold mt-4 mb-1.5" style="color:#12341d">Vị trí phát hiện bệnh</p>
-    <p class="text-[11.5px] mb-1.5" style="color:#8a8f83">Kéo điểm đánh dấu trên bản đồ để chọn đúng vị trí.</p>
-    <div id="saveReportMap" class="w-full h-48 rounded-lg" style="background:#e2efd9"></div>
-    <p class="text-[11.5px] mt-1.5" style="color:#8a8f83" x-show="savePosition.lat !== null">
-      Toạ độ: <span x-text="savePosition.lat && savePosition.lat.toFixed(5)"></span>, <span x-text="savePosition.lng && savePosition.lng.toFixed(5)"></span>
-    </p>
-
-    <p x-show="saveError" x-cloak class="text-[12.5px] mt-3 px-3 py-2 rounded-lg" style="background:#fbe3dc;color:#c1440e" x-text="saveError"></p>
-
-    <button @click="submitSaveReport()" :disabled="saveSubmitting || savePosition.lat === null" class="w-full mt-4 px-5 py-3 rounded-lg text-[14px] font-semibold text-white flex items-center justify-center gap-2 transition" :style="`background:#1f6d3c;opacity:${(saveSubmitting || savePosition.lat === null) ? .6 : 1}`">
-      <i data-lucide="loader-circle" class="w-4 h-4 animate-spin" x-show="saveSubmitting"></i>
-      <span x-text="saveSubmitting ? 'Đang lưu...' : 'Lưu kết quả'"></span>
-    </button>
   </div>
 </div>

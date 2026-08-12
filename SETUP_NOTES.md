@@ -6,28 +6,43 @@ VPS: 14.225.202.210, path: ~/project/AI-nhan-dien-sau-benh
 
 ## 0. Backend chẩn đoán HIỆN TẠI: Gemini (qua WebAI-to-API)
 `app.py` có 1 công tắc `DIAGNOSIS_BACKEND` ở đầu file, đang để `"gemini"`:
-- **`"gemini"`** (hiện tại): gọi Gemini qua service **WebAI-to-API** chạy local (Docker,
-  cổng 6969, cấu hình ở `F:\gemini2api\gemini2api`) - dùng chung cho **cả 7 cây**, kể cả
-  Ngô/Sắn/Cà chua/Xoài chưa có model tự train. Gemini tự nhận diện luôn cây trong ảnh có
-  khớp với cây người dùng chọn không (`crop_mismatch`), không cần lớp "crop gate" riêng.
+- **`"gemini"`** (hiện tại): gọi Gemini qua service **WebAI-to-API** - dùng chung cho
+  **cả 7 cây**, kể cả Ngô/Sắn/Cà chua/Xoài chưa có model tự train. Gemini tự nhận diện
+  luôn cây trong ảnh có khớp với cây người dùng chọn không (`crop_mismatch`), không cần
+  lớp "crop gate" riêng.
 - **`"local"`**: quay lại dùng model YOLO/EfficientNet tự train (mục 3-4 bên dưới, code vẫn
   còn nguyên, không bị xoá) - chỉ cần đổi `DIAGNOSIS_BACKEND = "local"` trong `app.py` rồi
   restart service, không cần sửa gì thêm.
+
+**Kiến trúc HIỆN TẠI (đã đổi):** container WebAI-to-API chạy Docker ngay trên CHÍNH VPS
+này (không còn chạy trên máy Windows local qua Cloudflare Tunnel như trước nữa), cổng
+6969 chỉ bind `127.0.0.1` (không public trực tiếp), được reverse-proxy qua OpenLiteSpeed
+ra domain riêng **`https://webai.girc.edu.vn`** (có SSL, có Basic Auth cho `/admin`). Nhờ
+vậy không còn phụ thuộc máy Windows phải bật liên tục nữa - đây từng là 1 single point of
+failure, giờ đã loại bỏ được.
 
 **Đây KHÔNG phải Gemini API chính thức có key** - là cách dùng lại phiên đăng nhập Gemini
 web cá nhân (cookie `__Secure-1PSID`/`__Secure-1PSIDTS`), giống hệt cách đang dùng cho dự
 án GIRC khảo sát sạt lở (`assess_location.py`). README của WebAI-to-API ghi rõ **"intended
 for research and educational purposes only"** - không dùng cho mục đích thương mại. Cookie
 có thể hết hạn theo thời gian, cần đăng nhập lại gemini.google.com và cập nhật qua
-`http://localhost:6969/admin` nếu thấy lỗi 502 từ `/predict`.
+`https://webai.girc.edu.vn/admin` nếu thấy lỗi 502 từ `/predict`.
+
+**Lưu ý:** vì backend Gemini web-scraping chạy từ IP datacenter (VPS) thay vì IP nhà mạng
+dân dụng, khả năng bị Google chặn/nghi ngờ traffic bất thường CAO HƠN so với khi chạy trên
+máy Windows local trước đây. Cần theo dõi log container (`docker compose logs -f` trong
+`~/gemini2api`) vài ngày đầu sau khi chuyển, đặc biệt tìm dòng "Response stalled"/"ReadError"
+lặp lại liên tục - nếu vậy khả năng cookie/IP đã bị chặn, cần cân nhắc quay lại chạy trên
+máy nhà hoặc đổi tài khoản Google khác.
 
 **Yêu cầu để chạy được backend Gemini:**
-1. Container WebAI-to-API phải đang chạy: `cd F:\gemini2api\gemini2api && docker compose up -d`
-2. Cookie trong `config.conf` (hoặc qua `/admin`) còn hạn.
+1. Container WebAI-to-API phải đang chạy trên VPS: `cd ~/gemini2api && docker compose up -d`
+2. Cookie trong `config.conf` (hoặc qua `https://webai.girc.edu.vn/admin`) còn hạn.
 3. `pip install openai` (đã có trong `requirements.txt`).
-4. FastAPI (`app.py`) và WebAI-to-API chạy trên CÙNG máy (gọi `http://localhost:6969/v1`) -
-   nếu sau này tách sang máy/VPS khác, phải sửa `WEBAI_BASE_URL` trong `gemini_diagnosis.py`
-   trỏ đúng địa chỉ, và đảm bảo cookie vẫn hợp lệ từ xa.
+4. `WEBAI_BASE_URL` trong systemd service (`agriai.service`, xem mục 4) đang set
+   `https://webai.girc.edu.vn/v1` - đây là domain reverse-proxy vào Docker cùng VPS, không
+   phải chạy thẳng qua `localhost:6969` (tuy cũng chạy được vì cùng máy, nhưng đang chọn
+   đi qua domain để tiện theo dõi qua `/admin` và có SSL/Basic Auth sẵn).
 
 **Cách gửi ảnh cho Gemini:** WebAI-to-API (thư viện `gemini-webapi` bên trong) cần 1 URL
 ảnh **thật** để tự tải về rồi mới đưa cho Gemini xem - **không nhận được** base64 data URI
@@ -87,24 +102,15 @@ Cấu hình service KHÔNG đổi so với trước (vẫn `uvicorn app:app`, v�
 là gốc repo Laravel) - vì phần detection/classification giờ gộp chung vào đúng `app.py`
 này rồi, không phải trỏ sang thư mục project riêng nào khác nữa.
 
-**Quan trọng nếu backend đang là `"gemini"` (xem mục 0) và container WebAI-to-API
-VẪN Ở LẠI máy Windows local (không đưa lên VPS):** `app.py`/`gemini_diagnosis.py` đọc
-2 hằng số này từ biến môi trường (có fallback về giá trị dùng khi chạy local, xem
-comment ngay tại chỗ khai báo), nên PHẢI set đè lại trong service systemd trên VPS,
-nếu không sẽ bị lỗi y hệt lúc còn chạy local (do VPS gọi "localhost:6969" thì đó là
-localhost của chính VPS, không phải máy Windows):
+**Quan trọng nếu backend đang là `"gemini"` (xem mục 0):** `app.py`/`gemini_diagnosis.py`
+đọc 2 hằng số này từ biến môi trường (có fallback về giá trị default trong code, xem
+comment ngay tại chỗ khai báo), nên PHẢI set đè lại trong service systemd trên VPS:
 - `LOCAL_IMAGE_BASE_URL` → domain public thật của VPS, vd `https://aiplant.girc.edu.vn`
-  (không cần tunnel nữa vì đã là domain công khai sẵn trên server).
-- `WEBAI_BASE_URL` → domain public trỏ tới container WebAI-to-API đang chạy trên máy
-  Windows local, vd `https://webai.girc-ai.com/v1`. Domain này CHƯA có sẵn, phải tự
-  tạo thêm 1 Public Hostname mới trong cùng Cloudflare Tunnel đang dùng cho
-  `predict.girc-ai.com`, trỏ về `localhost:6969` (thay vì `localhost:8000`). Nhớ hạn
-  chế truy cập domain này (Cloudflare Access chỉ cho phép IP của VPS, hoặc thêm auth
-  header) vì nó proxy thẳng tới phiên đăng nhập Gemini cá nhân của bạn - để hở ra
-  internet ai cũng gọi được là rất rủi ro.
-- Máy Windows (docker + `cloudflared`) phải BẬT LIÊN TỤC thì Laravel/FastAPI trên
-  VPS mới chẩn đoán được - đây là 1 điểm phụ thuộc/single point of failure cần biết
-  trước, máy tắt/mất mạng là tính năng AI ngưng hoạt động dù VPS vẫn chạy bình thường.
+  (không cần tunnel vì đã là domain công khai sẵn trên server).
+- `WEBAI_BASE_URL` → **kể từ khi chuyển Docker WebAI-to-API lên chạy ngay trên VPS này**,
+  giá trị đúng là `https://webai.girc.edu.vn/v1` (domain riêng, reverse-proxy qua
+  OpenLiteSpeed vào container Docker cổng 6969 chỉ bind `127.0.0.1` - xem mục 0 và mục 5b).
+  Không còn phụ thuộc máy Windows/Cloudflare Tunnel nữa như thiết lập cũ.
 
 - Tạo `/etc/systemd/system/agriai.service`:
   ```
@@ -118,13 +124,21 @@ localhost của chính VPS, không phải máy Windows):
   WorkingDirectory=/home/girc-son/project/AI-nhan-dien-sau-benh
   Environment="PATH=/home/girc-son/project/AI-nhan-dien-sau-benh/venv/bin"
   Environment="LOCAL_IMAGE_BASE_URL=https://aiplant.girc.edu.vn"
-  Environment="WEBAI_BASE_URL=https://webai.girc-ai.com/v1"
+  Environment="WEBAI_BASE_URL=https://webai.girc.edu.vn/v1"
   ExecStart=/home/girc-son/project/AI-nhan-dien-sau-benh/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
   Restart=always
   RestartSec=5
 
   [Install]
   WantedBy=multi-user.target
+  ```
+- Nếu service đã tồn tại từ trước (đang set `WEBAI_BASE_URL` cũ trỏ `webai.girc-ai.com`),
+  chỉ cần sửa đúng 1 dòng đó rồi áp dụng lại, không cần tạo file mới:
+  ```
+  sudo sed -i 's#WEBAI_BASE_URL=.*#WEBAI_BASE_URL=https://webai.girc.edu.vn/v1"#' /etc/systemd/system/agriai.service
+  sudo systemctl daemon-reload
+  sudo systemctl restart agriai
+  sudo systemctl status agriai
   ```
 - `sudo systemctl daemon-reload`
 - `sudo systemctl enable agriai`
@@ -154,12 +168,28 @@ Trong vhost Laravel (`AI-nhan-dien-sau-benh`):
   sudo /usr/local/lsws/bin/lswsctrl start
   ```
 
+## 5b. WebAI-to-API (Docker Gemini) ngay trên VPS này, domain riêng `webai.girc.edu.vn`
+Container `web_ai_server` chạy tại `~/gemini2api` (docker-compose.yml + config.conf, copy
+từ máy Windows sang), cổng 6969 chỉ bind `127.0.0.1:6969:6969` (không public trực tiếp):
+- `cd ~/gemini2api && docker compose up -d`
+- `curl http://localhost:6969/api/admin/status` -> phải thấy `"gemini_status":"connected"`
+
+DNS: A record `webai.girc.edu.vn` -> IP VPS. Virtual Host riêng trong OpenLiteSpeed
+(khác vhost với Laravel `aiplant.girc.edu.vn`):
+- Virtual Host mới tên `webai`, Context type **Proxy**, URI `/`, Address `http://127.0.0.1:6969`
+- Listener 443 hiện có → thêm Virtual Host Mapping cho domain `webai.girc.edu.vn`
+- `/admin` được khoá bằng Basic Auth riêng (Security → Realm, tạo qua
+  `/usr/local/lsws/admin/misc/htpasswd.sh`) vì dashboard này không có login sẵn, để hở ra
+  sẽ lộ cookie đăng nhập Gemini cá nhân
+- SSL: Let's Encrypt qua chính OpenLiteSpeed (VH → SSL → Issue Let's Encrypt Certificate)
+- `sudo /usr/local/lsws/bin/lswsctrl restart` để áp dụng
+
 ## 6. Test nhanh sau khi cài lại
 - `curl http://127.0.0.1:8000/` -> với backend Gemini phải thấy `"diagnosis_backend":"gemini"` và
   `"available_crops"` liệt kê đủ 7 cây (che, lua, ngo, san, ca_chua, xoai, ot). Với backend `"local"`
   thì `available_crops` là object liệt kê từng cây đang dùng loại model nào, vd
   `{"che":"detection","lua":"detection",...}` (Xoài không xuất hiện vì chưa có model nào).
-- `curl -s --http1.1 -X POST https://aiplant.girc.edu.vn/predict -F "crop=che" -F "file=@duong_dan_anh.jpg"` -> phải ra JSON kết quả. Nếu lỗi 502 khi đang dùng backend Gemini -> kiểm tra container `web_ai_server` còn chạy (`docker compose ps` trong `F:\gemini2api\gemini2api`) và cookie còn hạn (`http://localhost:6969/admin`).
+- `curl -s --http1.1 -X POST https://aiplant.girc.edu.vn/predict -F "crop=che" -F "file=@duong_dan_anh.jpg"` -> phải ra JSON kết quả. Nếu lỗi 502 khi đang dùng backend Gemini -> kiểm tra container `web_ai_server` còn chạy trên VPS (`cd ~/gemini2api && docker compose ps`) và cookie còn hạn (`https://webai.girc.edu.vn/admin`).
 - (curl trần không kèm file/-X POST rỗng sẽ báo "Invalid HTTP request received" - đây KHÔNG phải lỗi, chỉ do thiếu body, bỏ qua)
 
 ## Lưu ý quan trọng
@@ -167,7 +197,7 @@ Trong vhost Laravel (`AI-nhan-dien-sau-benh`):
 - Sau mỗi lần train model mới (dù là detection `.pt` hay classification `.pth`) -> nhớ `scp` đè lên đúng chỗ (`.pth` ở gốc repo, `.pt` vào `ai_models/`) + `sudo systemctl restart agriai` (model chỉ load 1 lần lúc service khởi động, không tự nhận model mới). Lưu ý: các model này **chỉ được dùng khi `DIAGNOSIS_BACKEND = "local"`**, hiện tại đang để `"gemini"` nên phần load model bị bỏ qua lúc khởi động (xem mục 0).
 - Sau mỗi lần sửa `agri-index.blade.php`/`app.py`/`crop_configs.py`/`gemini_diagnosis.py` trên server qua patch script -> nhớ đồng bộ ngược lại vào code trên máy Windows + git, tránh lệch code giữa 2 nơi
 - Project `fastaoi_plant` (nếu còn trên máy Windows) chỉ còn là bản nháp/tham khảo cũ - service thật đang chạy nằm hẳn trong `app.py` + `crop_configs.py` của repo này, không cần deploy `fastaoi_plant` riêng nữa.
-- Nếu deploy backend Gemini lên VPS: container WebAI-to-API + cookie phải chạy trên CÙNG VPS đó (xem mục 0), và VPS cần đăng nhập/duy trì cookie Gemini y hệt máy local - phức tạp hơn deploy model tự train, cân nhắc kỹ trước khi đưa backend Gemini lên production thật.
+- Docker WebAI-to-API + cookie Gemini giờ chạy ngay trên VPS này (mục 0 + 5b), không còn phụ thuộc máy Windows/Cloudflare Tunnel nữa. Rủi ro đổi lại: traffic gọi Gemini giờ xuất phát từ IP datacenter, dễ bị Google chặn/nghi ngờ hơn IP nhà mạng dân dụng - theo dõi log container nếu thấy chẩn đoán hay lỗi/treo lâu.
 
 ## 7. Cách thêm/nâng cấp 1 cây
 Có 2 loại model, khai báo trong `crop_configs.py`, mỗi cây có thể có 1 hoặc cả 2:

@@ -13,7 +13,7 @@ class DiagnosisReport extends Model
     public const STATUS_REJECTED = 'rejected';
 
     protected $fillable = [
-        'user_id', 'crop', 'crop_label', 'disease_name', 'disease_key',
+        'user_id', 'sender_name', 'crop', 'crop_label', 'disease_name', 'disease_key',
         'probability', 'disease_probability', 'level', 'pathogen',
         'signs_in_photo', 'symptoms', 'treatment', 'prevention',
         'image_path', 'latitude', 'longitude', 'status',
@@ -51,5 +51,15 @@ class DiagnosisReport extends Model
     public function imageUrl(): string
     {
         return asset('storage/'.$this->image_path);
+    }
+
+    /**
+     * Tên hiển thị của người gửi: ưu tiên tài khoản nếu tình cờ có đăng nhập
+     * (dữ liệu cũ từ trước khi bỏ yêu cầu đăng nhập), không thì lấy tên tự
+     * nhập trong form (sender_name), cuối cùng mới rơi về "Ẩn danh".
+     */
+    public function senderDisplayName(): string
+    {
+        return $this->user->name ?? $this->sender_name ?? 'Ẩn danh';
     }
 }

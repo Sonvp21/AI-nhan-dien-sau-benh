@@ -18,7 +18,7 @@
       <span class="text-xs font-semibold px-2.5 py-1 rounded-full" style="background:#fbe3dc;color:var(--danger)">Từ chối</span>
     @endif
   </div>
-  <p class="text-sm text-gray-500 mt-1">Gửi lúc {{ $report->created_at->format('d/m/Y H:i') }} bởi {{ $report->user->name ?? '—' }}</p>
+  <p class="text-sm text-gray-500 mt-1">Gửi lúc {{ $report->created_at->format('d/m/Y H:i') }} bởi {{ $report->senderDisplayName() }}</p>
 
   <div class="grid lg:grid-cols-2 gap-6 mt-6">
 
@@ -54,7 +54,7 @@
           <div><dt class="text-gray-400 text-xs">Mức độ</dt><dd class="font-medium mt-0.5">{{ $report->level ?? '—' }}</dd></div>
           <div><dt class="text-gray-400 text-xs">Khả năng có bệnh</dt><dd class="font-medium mt-0.5">{{ !is_null($report->disease_probability) ? $report->disease_probability.'%' : '—' }}</dd></div>
           <div><dt class="text-gray-400 text-xs">% bệnh này</dt><dd class="font-medium mt-0.5">{{ !is_null($report->probability) ? $report->probability.'%' : '—' }}</dd></div>
-          <div><dt class="text-gray-400 text-xs">Người gửi</dt><dd class="font-medium mt-0.5">{{ $report->user->name ?? '—' }}</dd></div>
+          <div><dt class="text-gray-400 text-xs">Người gửi</dt><dd class="font-medium mt-0.5">{{ $report->senderDisplayName() }}</dd></div>
           <div><dt class="text-gray-400 text-xs">Số điện thoại</dt><dd class="font-medium mt-0.5">{{ $report->user->phone ?? '—' }}</dd></div>
         </dl>
       </div>
@@ -117,6 +117,11 @@
               <button class="text-sm font-semibold px-4 py-2.5 rounded-lg border" style="color:var(--danger);border-color:var(--danger)">Từ chối</button>
             </form>
           @endif
+          <form method="POST" action="{{ route('admin.diagnosis-reports.destroy', $report) }}" onsubmit="return confirm('Xóa hẳn yêu cầu này? Không thể khôi phục lại.')">
+            @csrf
+            @method('DELETE')
+            <button class="text-sm font-semibold px-4 py-2.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50">Xóa yêu cầu</button>
+          </form>
         </div>
       </div>
     </div>

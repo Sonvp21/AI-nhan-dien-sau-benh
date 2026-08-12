@@ -9,11 +9,17 @@ use App\Http\Controllers\DiagnosisReportController;
 use App\Http\Controllers\RemoteCaptureController;
 use Illuminate\Support\Facades\Route;
 
-Route::view('/', 'agri-index')->name('agri.index');
-Route::view('/thong-bao', 'agri-notifications')->name('agri.notifications');
-Route::view('/them-ruong', 'agri-add-field')->name('agri.add-field');
-Route::view('/thu-vien-sau-benh', 'agri-library')->name('agri.library');
-Route::view('/cong-dong', 'agri-community')->name('agri.community');
+// ==== track.visit: ghi nhận lượt xem trang thật (dùng cho số liệu footer) -
+//      chỉ gắn vào các trang xem THẬT, không gắn vào route JSON/polling/admin
+//      để không bị phồng số liệu (xem TrackSiteVisit + AppServiceProvider). ====
+Route::middleware('track.visit')->group(function () {
+    Route::view('/', 'agri-index')->name('agri.index');
+    Route::view('/thong-bao', 'agri-notifications')->name('agri.notifications');
+    Route::view('/them-ruong', 'agri-add-field')->name('agri.add-field');
+    Route::view('/thu-vien-sau-benh', 'agri-library')->name('agri.library');
+    Route::view('/cong-dong', 'agri-community')->name('agri.community');
+    Route::view('/ban-do-dich-benh', 'agri-disease-map')->name('agri.disease-map');
+});
 
 // ==== Auth: SĐT + mật khẩu, phone dùng làm username, KHÔNG có bước OTP ====
 Route::view('/auth', 'agri-auth')->name('agri.auth')->middleware('guest');
@@ -21,15 +27,12 @@ Route::post('/auth/dang-nhap', [AuthController::class, 'login'])->name('agri.aut
 Route::post('/auth/dang-ky', [AuthController::class, 'register'])->name('agri.auth.register')->middleware('guest');
 Route::post('/auth/dang-xuat', [AuthController::class, 'logout'])->name('agri.auth.logout')->middleware('auth');
 
-// ==== Lưu kết quả chẩn đoán ("Lưu" ngay sau khi chẩn đoán xong) + lịch sử
-//      của riêng người dùng đang đăng nhập ====
-Route::middleware('auth')->group(function () {
-    Route::post('/bao-cao-benh', [DiagnosisReportController::class, 'store'])->name('agri.reports.store');
-    Route::get('/lich-su-chan-doan', [DiagnosisReportController::class, 'history'])->name('agri.reports.history');
-});
+// ==== Lưu kết quả chẩn đoán ("Lưu" ngay sau khi chẩn đoán xong) - KHÔNG cần
+//      đăng nhập, ai cũng gửi được (chỉ cần nhập tên trong form) ====
+Route::post('/bao-cao-benh', [DiagnosisReportController::class, 'store'])->name('agri.reports.store');
 
-// ==== Bản đồ dịch bệnh công khai: chỉ hiện các report admin đã duyệt ====
-Route::view('/ban-do-dich-benh', 'agri-disease-map')->name('agri.disease-map');
+// ==== Dữ liệu JSON cho bản đồ dịch bệnh (route xem trang ở group track.visit
+//      phía trên) - chỉ hiện các report admin đã duyệt ====
 Route::get('/ban-do-dich-benh/du-lieu', [DiagnosisMapController::class, 'data'])->name('agri.disease-map.data');
 
 // ==== Chụp ảnh từ xa bằng điện thoại (chế độ thuyết trình): quét mã QR
@@ -57,4 +60,5 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin'])->group(fun
     Route::get('diagnosis-reports/{diagnosisReport}', [AdminDiagnosisReportController::class, 'show'])->name('diagnosis-reports.show');
     Route::post('diagnosis-reports/{diagnosisReport}/duyet', [AdminDiagnosisReportController::class, 'approve'])->name('diagnosis-reports.approve');
     Route::post('diagnosis-reports/{diagnosisReport}/tu-choi', [AdminDiagnosisReportController::class, 'reject'])->name('diagnosis-reports.reject');
+    Route::delete('diagnosis-reports/{diagnosisReport}', [AdminDiagnosisReportController::class, 'destroy'])->name('diagnosis-reports.destroy');
 });

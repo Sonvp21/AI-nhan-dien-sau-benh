@@ -4,7 +4,7 @@
      để đỡ tốn chỗ). Trên mobile cuộn bằng ngón tay như bình thường.
      Responsive: mobile (mặc định) / HD (md:) / FHD (2xl:) --}}
 <div class="rounded-xl p-4 md:p-5 2xl:p-6" style="background:#fff;border:1px solid #eceae3">
-  <p class="text-[17px] md:text-[18px] 2xl:text-[20px] font-bold mb-3" style="color:#12341d">Chọn mô hình cây trồng</p>
+  <p class="text-[17px] md:text-[18px] 2xl:text-[20px] font-bold mb-3" style="color:#12341d">Chọn cây trồng</p>
 
   <div class="relative group/crops">
     <button @click="scrollCrops(-1)" class="hidden md:flex opacity-0 group-hover/crops:opacity-100 transition absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 w-7 h-7 2xl:w-8 2xl:h-8 rounded-full items-center justify-center shadow" style="background:#fff;border:1px solid #dbe8d2;color:#1f6d3c">

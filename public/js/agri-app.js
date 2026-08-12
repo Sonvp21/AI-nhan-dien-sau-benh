@@ -24,17 +24,24 @@ function agriApp(){
   // len cac object cua thu vien Google Maps, co the lam vo hanh vi noi bo.
   let saveMapInstance = null;
   let saveMarkerInstance = null;
+  // Ham "dat marker tai lat/lng" cua initSaveMap(), luu lai o day de cac ham
+  // khac (useCurrentLocationForSave, o tim dia chi) goi lai duoc ma khong can
+  // tao lai map. La arrow function nen van giu dung "this" ban dau (Alpine data).
+  let placeOnSaveMap = null;
+  let saveSearchBoxInitialized = false;
 
   return {
     selectedCrop:'Chè',
     symptomPage:0,
 
-    // ==== Đăng nhập + lưu kết quả chẩn đoán lên bản đồ (chờ admin duyệt) ====
+    // ==== Lưu kết quả chẩn đoán lên bản đồ (chờ admin duyệt) - KHÔNG cần đăng
+    // nhập, chỉ cần nhập tên (saveSenderName) trong modal.
     // xem save-report-modal.blade.php + DiagnosisReportController.
     currentUser: (typeof window !== 'undefined' && window.AGRI_USER) ? window.AGRI_USER : null,
     saveModalOpen:false,
     saveSubmitting:false,
     saveError:null,
+    saveSenderName:'',
     savePosition:{ lat:null, lng:null },
 
     // Drawer menu ở mobile (< md) - thay cho banner + menu account đã ẩn ở
@@ -104,6 +111,7 @@ function agriApp(){
             };
             this.diagnosing = false;
             this.diagnosed = true;
+            this.persistSessions();
             return;
           }
 
@@ -146,6 +154,7 @@ function agriApp(){
           };
           this.diagnosing = false;
           this.diagnosed = true;
+          this.persistSessions();
         }catch(err){
           this.diagnosing = false;
           console.error(err);
@@ -158,8 +167,11 @@ function agriApp(){
       setTimeout(() => {
         this.diagnosing = false;
         this.diagnosed = true;
+        this.persistSessions();
       }, 1400);
     },
+    // Bấm "Chẩn đoán khác" - 1 trong 3 hành động DUY NHẤT được phép xoá trạng
+    // thái đang xem (còn lại là: bấm "Chẩn đoán bệnh" và chọn ảnh khác).
     resetDiagnosis(){
       this.diagnosing = false;
       this.diagnosed = false;
@@ -169,6 +181,73 @@ function agriApp(){
       this.selectedOtherDisease = null;
       this.confirmedPhotos.forEach(p => URL.revokeObjectURL(p.url));
       this.confirmedPhotos = [];
+      this.persistSessions();
+    },
+
+    // ==== Lưu trạng thái chẩn đoán vào localStorage, TÁCH RIÊNG theo từng cây
+    // (cropSessions), để: (1) reload trang không mất kết quả đang xem, (2) đổi
+    // qua cây khác rồi đổi lại vẫn thấy đúng kết quả cũ của cây đó - không bị
+    // xoá chỉ vì đổi tab. CHỈ reset (xoá) khi người dùng CHỦ ĐỘNG bấm "Chẩn đoán
+    // bệnh" (runDiagnosis), "Chẩn đoán khác" (resetDiagnosis), hoặc chọn ảnh
+    // khác (confirmPhotos) - đúng yêu cầu, không reset khi reload/đổi cây.
+    // Lưu ý: ảnh gốc (File) KHÔNG thể lưu vào localStorage (không serialize
+    // được, và blob URL sẽ chết sau reload) nên chỉ lưu lại 1 bản preview dạng
+    // base64 (chỉ để HIỂN THỊ) - nút "Lưu kết quả lên bản đồ" sau khi khôi phục
+    // sẽ tự chặn lại và yêu cầu chọn lại ảnh gốc nếu cần gửi report.
+    STORAGE_KEY:'agri_diag_sessions_v1',
+    cropSessions:{},
+    persistSessions(){
+      const photo = this.confirmedPhotos[0];
+      this.cropSessions[this.selectedCrop] = {
+        diagnosed: this.diagnosed,
+        liveResult: this.liveResult,
+        symptomPage: this.symptomPage,
+        photoPreviewDataUrl: photo ? (photo.previewDataUrl || (photo.url && photo.url.startsWith('data:') ? photo.url : null)) : null,
+      };
+      try{
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify({ selectedCrop: this.selectedCrop, sessions: this.cropSessions }));
+      }catch(e){ /* qua dung luong luu tru (anh lon) hoac bi chan - bo qua, khong lam vo app */ }
+    },
+    applySessionFor(cropName){
+      const s = this.cropSessions[cropName];
+      if(s){
+        this.diagnosed = !!s.diagnosed;
+        this.liveResult = s.liveResult || null;
+        this.symptomPage = s.symptomPage || 0;
+        this.confirmedPhotos = s.photoPreviewDataUrl ? [{ file:null, url:s.photoPreviewDataUrl, previewDataUrl:s.photoPreviewDataUrl }] : [];
+      } else {
+        this.diagnosed = false;
+        this.liveResult = null;
+        this.symptomPage = 0;
+        this.confirmedPhotos = [];
+      }
+    },
+    // Chuyen File anh vua chon thanh base64 (chi dung de luu/khoi phuc preview),
+    // xong moi ghi vao localStorage - lam bat dong bo vi FileReader chi co API
+    // callback/promise, khong the goi dong bo ngay trong confirmPhotos().
+    cachePhotoPreviewForStorage(){
+      const photo = this.confirmedPhotos[0];
+      if(!photo || !photo.file){ this.persistSessions(); return; }
+      const reader = new FileReader();
+      reader.onload = () => { photo.previewDataUrl = reader.result; this.persistSessions(); };
+      reader.onerror = () => { this.persistSessions(); };
+      reader.readAsDataURL(photo.file);
+    },
+    // Alpine tu goi method nay ngay khi component duoc khoi tao (life-cycle
+    // hook, khong can x-init o blade) - khoi phuc lai cay + session da luu tu
+    // lan truoc de reload trang khong mat trang thai dang xem.
+    init(){
+      try{
+        const raw = localStorage.getItem(this.STORAGE_KEY);
+        if(raw){
+          const data = JSON.parse(raw);
+          this.cropSessions = data.sessions || {};
+          if(data.selectedCrop && this.crops.some(c => c.name === data.selectedCrop)){
+            this.selectedCrop = data.selectedCrop;
+          }
+          this.applySessionFor(this.selectedCrop);
+        }
+      }catch(e){ /* localStorage bi chan hoac du lieu hong - chay binh thuong tu dau */ }
     },
 
     // Gop danh sach detections tra ve tu API thanh danh sach KHONG trung lap,
@@ -220,15 +299,12 @@ function agriApp(){
       return this.saveMainDetection ? (this.saveMainDetection.probability ?? null) : null;
     },
     openSaveModal(){
-      if(!this.currentUser){
-        window.location.href = (window.AGRI_ROUTES && window.AGRI_ROUTES.auth) || '/auth';
-        return;
-      }
       if(!this.confirmedPhotos.length || !this.confirmedPhotos[0].file){
-        alert('Không tìm thấy ảnh gốc để lưu (ảnh chụp từ xa qua mã QR chưa hỗ trợ lưu report).');
+        alert('Không tìm thấy ảnh gốc để lưu (ảnh chụp từ xa qua mã QR, hoặc ảnh được khôi phục sau khi tải lại trang, chưa hỗ trợ lưu report - vui lòng chọn lại ảnh).');
         return;
       }
       this.saveError = null;
+      this.saveSenderName = (this.currentUser && this.currentUser.name) || '';
       this.savePosition = { lat:null, lng:null };
       this.saveModalOpen = true;
       this.$nextTick(() => this.initSaveMap());
@@ -236,6 +312,11 @@ function agriApp(){
     closeSaveModal(){
       this.saveModalOpen = false;
     },
+    // Map chọn vị trí trong modal "Lưu kết quả": cuộn chuột zoom được ngay
+    // (gestureHandling:'greedy', không cần giữ Ctrl), bấm bất kỳ đâu trên bản
+    // đồ để dời điểm đánh dấu tới đó (không chỉ kéo marker), có ô tìm địa chỉ
+    // (Places Autocomplete) và nút "Dùng vị trí hiện tại" - xem
+    // useCurrentLocationForSave() + save-report-modal.blade.php.
     initSaveMap(){
       const el = document.getElementById('saveReportMap');
       if(!el) return;
@@ -247,18 +328,47 @@ function agriApp(){
           return;
         }
         if(!saveMapInstance){
-          saveMapInstance = new google.maps.Map(el, { center:{ lat, lng }, zoom:15 });
+          saveMapInstance = new google.maps.Map(el, {
+            center:{ lat, lng }, zoom:15,
+            gestureHandling:'greedy', // bo yeu cau giu Ctrl khi cuon chuot de zoom
+            mapTypeControl:true, // cho doi Ban do/Ve tinh de de nhin ro dia hinh/ruong
+            streetViewControl:false,
+          });
           saveMarkerInstance = new google.maps.Marker({ position:{ lat, lng }, map:saveMapInstance, draggable:true });
           saveMarkerInstance.addListener('dragend', () => {
             const p = saveMarkerInstance.getPosition();
             this.savePosition = { lat:p.lat(), lng:p.lng() };
           });
+          // Bấm bất kỳ đâu trên bản đồ để dời marker tới đó luôn, không bắt
+          // buộc phải kéo marker mới đổi được vị trí.
+          saveMapInstance.addListener('click', e => place(e.latLng.lat(), e.latLng.lng()));
+
+          // Ô tìm địa chỉ (Places Autocomplete) - chỉ khởi tạo 1 lần vì input
+          // vẫn còn trong DOM giữa các lần mở modal (modal dùng x-show, không
+          // bị xoá khỏi DOM). Cần &libraries=places ở script Google Maps.
+          if(!saveSearchBoxInitialized && google.maps.places){
+            const searchInput = document.getElementById('saveLocationSearch');
+            if(searchInput){
+              const autocomplete = new google.maps.places.Autocomplete(searchInput, {
+                fields:['geometry'],
+                componentRestrictions:{ country:'vn' },
+              });
+              autocomplete.addListener('place_changed', () => {
+                const p = autocomplete.getPlace();
+                if(p && p.geometry && p.geometry.location){
+                  place(p.geometry.location.lat(), p.geometry.location.lng());
+                }
+              });
+              saveSearchBoxInitialized = true;
+            }
+          }
         } else {
           saveMapInstance.setCenter({ lat, lng });
           saveMarkerInstance.setPosition({ lat, lng });
           google.maps.event.trigger(saveMapInstance, 'resize');
         }
       };
+      placeOnSaveMap = place;
 
       // Mặc định GPS hiện tại của người dùng; nếu bị chặn/không có thì tạm
       // đặt ở Thái Nguyên (vị trí trung tâm) để người dùng tự kéo lại.
@@ -272,8 +382,22 @@ function agriApp(){
         place(21.5944, 105.8480);
       }
     },
+    // Nút "Dùng vị trí hiện tại" (biểu tượng định vị cạnh ô tìm địa chỉ) -
+    // lấy lại GPS và dời marker về đúng vị trí đó.
+    useCurrentLocationForSave(){
+      if(!navigator.geolocation || !placeOnSaveMap) return;
+      navigator.geolocation.getCurrentPosition(
+        pos => placeOnSaveMap(pos.coords.latitude, pos.coords.longitude),
+        () => { this.saveError = 'Không lấy được vị trí hiện tại (bị chặn quyền truy cập vị trí).'; },
+        { timeout:6000 }
+      );
+    },
     async submitSaveReport(){
       if(this.saveSubmitting || this.savePosition.lat === null) return;
+      if(!this.saveSenderName.trim()){
+        this.saveError = 'Vui lòng nhập tên của bạn.';
+        return;
+      }
       if(!this.confirmedPhotos.length || !this.confirmedPhotos[0].file){
         this.saveError = 'Không tìm thấy ảnh gốc để lưu.';
         return;
@@ -287,6 +411,7 @@ function agriApp(){
         const appendIfPresent = (fd, key, val) => { if(val !== null && val !== undefined && val !== '') fd.append(key, val); };
 
         const fd = new FormData();
+        fd.append('sender_name', this.saveSenderName.trim());
         fd.append('crop', this.cropApiKey[this.selectedCrop] || this.selectedCrop);
         fd.append('crop_label', this.selectedCrop);
         fd.append('disease_name', this.saveDiseaseName || 'Không xác định');
@@ -309,10 +434,6 @@ function agriApp(){
           body:fd,
         });
 
-        if(res.status === 401){
-          window.location.href = window.AGRI_ROUTES.auth;
-          return;
-        }
         if(!res.ok){
           const err = await res.json().catch(() => null);
           const firstError = err && err.errors ? Object.values(err.errors)[0][0] : null;
@@ -355,6 +476,8 @@ function agriApp(){
       this.pendingFiles.splice(i, 1);
       if(!this.pendingFiles.length) this.modalStep = 'choose';
     },
+    // Chọn ảnh khác - 1 trong 3 hành động DUY NHẤT được phép xoá kết quả đang
+    // xem (còn lại là: bấm "Chẩn đoán bệnh" và "Chẩn đoán khác").
     confirmPhotos(){
       this.confirmedPhotos.forEach(p => URL.revokeObjectURL(p.url));
       this.confirmedPhotos = this.pendingFiles.map(p => ({ file: p.file, url: p.url }));
@@ -364,6 +487,7 @@ function agriApp(){
       this.diagnosed = false;
       this.diagnosing = false;
       this.liveResult = null;
+      this.cachePhotoPreviewForStorage();
     },
     cancelPhotos(){
       this.pendingFiles.forEach(p => URL.revokeObjectURL(p.url));
@@ -433,6 +557,7 @@ function agriApp(){
                 this.diagnosing = false;
                 this.diagnosed = false;
               }
+              this.persistSessions();
             }
           })
           .catch(() => {});
@@ -458,7 +583,18 @@ function agriApp(){
       {name:'Ớt', icon:'flame', img: ASSETS.crops.ot || null},
       {name:'Xoài', icon:'apple', img: ASSETS.crops.xoai || null},
     ],
-    selectCrop(name){ this.selectedCrop = name; this.symptomPage = 0; this.diagnosed = false; this.diagnosing = false; this.liveResult = null; this.otherDiseaseModalOpen = false; this.selectedOtherDisease = null; },
+    // Đổi cây KHÔNG xoá kết quả: lưu lại session của cây đang rời đi, rồi khôi
+    // phục đúng session đã lưu của cây mới chọn (hoặc trống nếu cây đó chưa
+    // từng chẩn đoán - không phải "mất" gì cả vì chưa có gì để mất).
+    selectCrop(name){
+      if(name === this.selectedCrop) return;
+      this.persistSessions();
+      this.selectedCrop = name;
+      this.diagnosing = false;
+      this.otherDiseaseModalOpen = false;
+      this.selectedOtherDisease = null;
+      this.applySessionFor(name);
+    },
     get info(){ return this.liveResult || this.diseaseDB[this.selectedCrop]; },
     get symptomPages(){
       // Du lieu mau (demo): dung sac "symptoms" tinh (emoji + caption, khong co

@@ -50,7 +50,7 @@
               @endif
             </td>
             <td class="px-4 py-3">{{ $crops[$r->crop] ?? $r->crop_label ?? $r->crop }}</td>
-            <td class="px-4 py-3">{{ $r->user->name ?? '—' }}<br><span class="text-xs text-gray-400">{{ $r->user->phone ?? '' }}</span></td>
+            <td class="px-4 py-3">{{ $r->senderDisplayName() }}<br><span class="text-xs text-gray-400">{{ $r->user->phone ?? '' }}</span></td>
             <td class="px-4 py-3 text-xs text-gray-500">{{ number_format($r->latitude, 5) }}, {{ number_format($r->longitude, 5) }}</td>
             <td class="px-4 py-3 text-xs text-gray-500">{{ $r->created_at->format('d/m/Y H:i') }}</td>
             <td class="px-4 py-3">
@@ -75,6 +75,11 @@
                   <button class="text-xs font-semibold" style="color:var(--danger)">Từ chối</button>
                 </form>
               @endif
+              <form method="POST" action="{{ route('admin.diagnosis-reports.destroy', $r) }}" class="inline" onsubmit="return confirm('Xóa hẳn yêu cầu này? Không thể khôi phục lại.')">
+                @csrf
+                @method('DELETE')
+                <button class="text-xs font-semibold text-gray-400 hover:text-gray-600">Xóa</button>
+              </form>
             </td>
           </tr>
         @empty
