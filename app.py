@@ -30,29 +30,75 @@ Test nhanh: mo trinh duyet http://127.0.0.1:8000/docs
 """
 
 import io
+import logging
 import os
+import time
 import uuid
+from collections import deque
 from typing import Optional
 
-import torch
-import torch.nn as nn
-from torchvision import transforms, models
 from PIL import Image
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.concurrency import run_in_threadpool
 
 from crop_configs import CROP_CONFIGS
-from gemini_diagnosis import diagnose_with_gemini, GeminiDiagnosisError, CROP_VI_NAMES
+from gemini_diagnosis import diagnose_with_gemini, GeminiDiagnosisError
+import openai_diagnosis
+from openai_diagnosis import diagnose_with_openai, OpenAIDiagnosisError, CROP_VI_NAMES
 
-# ==== CONG TAC CHON BACKEND CHAN DOAN ====
-# "gemini" = dung Gemini qua WebAI-to-API local (HIEN TAI, cho ca 7 cay, tu nhan dien
-#            luon dung/sai cay) | "local" = quay lai model YOLO/EfficientNet tu train
-#            (chi Che/Lua/Ot/Ngo/San/Ca chua co model, Xoai chua co).
-# Doi dong nay la chuyen qua lai duoc ngay, khong can sua gi khac trong file.
-DIAGNOSIS_BACKEND = "gemini"
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+# ==== CONG TAC CHON BACKEND CHAN DOAN (doc tu bien moi truong DIAGNOSIS_BACKEND) ====
+# "openai" = OpenAI vision (MAC DINH, cho ca 7 cay, tu nhan dien dung/sai cay) - xem openai_diagnosis.py
+# "gemini" = Gemini qua WebAI-to-API (cu, can cau noi Docker + cookie, xem gemini_diagnosis.py)
+# "local"  = model YOLO/EfficientNet tu train (Che/Lua/Ot/Ngo/San/Ca chua/Xoai, can torch)
+# Doi bien moi truong trong systemd service roi restart la chuyen duoc, khong sua code.
+DIAGNOSIS_BACKEND = os.environ.get("DIAGNOSIS_BACKEND", "openai").lower()
+
+# torch/torchvision rat nang (hang tram MB, tai mat vai giay): chi nap khi thuc su dung model tu train,
+# nen che do "openai"/"gemini" khong can cai chung tren server.
+if DIAGNOSIS_BACKEND == "local":
+    import torch
+    import torch.nn as nn
+    from torchvision import transforms, models
+
+# Gioi han chong lam dung (endpoint /predict cong khai, moi lan goi OpenAI ton tien)
+MAX_UPLOAD_BYTES = int(os.environ.get("DIAGNOSIS_MAX_UPLOAD_MB", "12")) * 1024 * 1024
+RATE_PER_IP_PER_MINUTE = int(os.environ.get("DIAGNOSIS_RATE_PER_MINUTE", "6"))
+DAILY_LIMIT = int(os.environ.get("DIAGNOSIS_DAILY_LIMIT", "1000"))  # tong so luot/ngay, 0 = khong gioi han
+_recent_calls: dict[str, deque] = {}
+_daily = {"day": time.strftime("%Y-%m-%d"), "count": 0}
+
+
+def _client_ip(request: Request) -> str:
+    # Sau reverse proxy (OpenLiteSpeed): phan tu CUOI cua X-Forwarded-For la do proxy tin cay them vao
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[-1].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_rate_limit(request: Request) -> None:
+    today = time.strftime("%Y-%m-%d")
+    if _daily["day"] != today:
+        _daily.update(day=today, count=0)
+    if DAILY_LIMIT and _daily["count"] >= DAILY_LIMIT:
+        raise HTTPException(status_code=429, detail="Hệ thống đã đạt giới hạn chẩn đoán trong ngày, vui lòng quay lại vào ngày mai.")
+
+    now = time.monotonic()
+    calls = _recent_calls.setdefault(_client_ip(request), deque())
+    while calls and now - calls[0] > 60:
+        calls.popleft()
+    if RATE_PER_IP_PER_MINUTE and len(calls) >= RATE_PER_IP_PER_MINUTE:
+        raise HTTPException(status_code=429, detail="Bạn gửi ảnh hơi nhiều, vui lòng chờ khoảng 1 phút rồi thử lại.")
+    calls.append(now)
+    _daily["count"] += 1
+    if len(_recent_calls) > 5000:  # don dep IP cu, tranh phinh bo nho
+        for ip in [ip for ip, c in _recent_calls.items() if not c or now - c[-1] > 60]:
+            _recent_calls.pop(ip, None)
 
 # WebAI-to-API can 1 URL CONG KHAI THAT de tu tai anh ve roi moi goi cho Gemini
 # (gemini-webapi khong tai duoc dia chi noi bo nhu host.docker.internal/127.0.0.1,
@@ -70,7 +116,8 @@ DIAGNOSIS_BACKEND = "gemini"
 # file nay dung chung duoc ca 2 noi, khong can sua code moi lan deploy.
 LOCAL_IMAGE_BASE_URL = os.environ.get("LOCAL_IMAGE_BASE_URL", "https://predict.girc-ai.com")
 TMP_IMAGES_DIR = "tmp_images"
-os.makedirs(TMP_IMAGES_DIR, exist_ok=True)
+if DIAGNOSIS_BACKEND == "gemini":  # chi che do Gemini moi can luu anh tam de co URL cho cau noi tai ve
+    os.makedirs(TMP_IMAGES_DIR, exist_ok=True)
 
 # TAM THOI de True de dieu tra loi "Failed to download" - anh tam se KHONG bi xoa
 # sau moi lan goi, de test tay URL tu trong container WebAI-to-API. Nho doi lai
@@ -80,13 +127,15 @@ os.makedirs(TMP_IMAGES_DIR, exist_ok=True)
 DEBUG_KEEP_TMP_IMAGES = False
 
 DEFAULT_CONF = 0.25
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-CLASSIFY_TRANSFORM = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-])
+if DIAGNOSIS_BACKEND == "local":
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    CLASSIFY_TRANSFORM = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    ])
 
 
 def _load_classification_model(sub_config):
@@ -143,6 +192,9 @@ if DIAGNOSIS_BACKEND == "local":
                 continue
 
         print(f"  -> CANH BAO: cay '{crop_key}' chua co model nao (detection lan classification), bo qua")
+elif DIAGNOSIS_BACKEND == "openai":
+    print(f"DIAGNOSIS_BACKEND = 'openai' -> model {openai_diagnosis.MODEL}, dung OpenAI cho ca 7 cay "
+          f"(khoa API: {'da cau hinh' if openai_diagnosis.is_configured() else 'CHUA CO - dat OPENAI_API_KEY'}).")
 else:
     print(f"DIAGNOSIS_BACKEND = 'gemini' -> bo qua buoc tai model local (.pth/.pt), "
           f"dung Gemini qua WebAI-to-API cho ca 7 cay.")
@@ -164,11 +216,20 @@ app.add_middleware(
 # ve duoc va dua cho Gemini xem (Gemini/gemini-webapi khong nhan base64 truc tiep
 # qua duong nay, phai la 1 URL http that no tu fetch). Moi anh bi xoa ngay sau khi
 # goi Gemini xong trong ham predict() ben duoi, thu muc nay chi chua anh tam vai giay.
-app.mount("/tmp-images", StaticFiles(directory=TMP_IMAGES_DIR), name="tmp-images")
+if DIAGNOSIS_BACKEND == "gemini":  # OpenAI nhan anh base64 truc tiep nen khong can route nay
+    app.mount("/tmp-images", StaticFiles(directory=TMP_IMAGES_DIR), name="tmp-images")
 
 
 @app.get("/")
 def root():
+    if DIAGNOSIS_BACKEND == "openai":
+        return {
+            "status": "ok",
+            "message": f"AgriAI dang chay - backend chan doan: OpenAI ({openai_diagnosis.MODEL})",
+            "diagnosis_backend": "openai",
+            "openai_configured": openai_diagnosis.is_configured(),
+            "available_crops": list(CROP_VI_NAMES.keys()),
+        }
     if DIAGNOSIS_BACKEND == "gemini":
         return {
             "status": "ok",
@@ -281,6 +342,7 @@ def _predict_classification(entry, image):
 
 @app.post("/predict")
 async def predict(
+    request: Request,
     file: UploadFile = File(...),
     crop: str = Form(...),
     conf: Optional[float] = Form(DEFAULT_CONF),
@@ -294,6 +356,49 @@ async def predict(
         contents = await file.read()
     except Exception:
         raise HTTPException(status_code=400, detail="Khong doc duoc anh, file co the bi loi")
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"Ảnh quá lớn (tối đa {MAX_UPLOAD_BYTES // 1024 // 1024} MB), vui lòng chọn ảnh nhỏ hơn.")
+
+    # ==== BACKEND OPENAI (mac dinh) - cho ca 7 cay, tu nhan dien dung/sai cay ====
+    if DIAGNOSIS_BACKEND == "openai":
+        if crop not in CROP_VI_NAMES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cay '{crop}' khong hop le. Cac cay ho tro: {list(CROP_VI_NAMES.keys())}",
+            )
+        _check_rate_limit(request)  # tinh luot TRUOC khi giai ma anh de chan gui don; moi luot goi OpenAI ton tien
+
+        def _open() -> Image.Image:
+            return Image.open(io.BytesIO(contents))
+
+        try:
+            image = await run_in_threadpool(_open)  # giai ma anh lon (vai MP) khong chan event loop
+            await run_in_threadpool(image.load)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Không đọc được ảnh, file có thể bị lỗi.")
+
+        started = time.monotonic()
+        try:
+            result = await diagnose_with_openai(image, crop)
+        except OpenAIDiagnosisError as e:
+            raise HTTPException(status_code=e.status, detail=e.message)
+        logging.getLogger("agriai").info("chan doan %s xong sau %.1fs", crop, time.monotonic() - started)
+
+        return {
+            "crop": crop,
+            "model_type": "openai",
+            "image_width": image.width,
+            "image_height": image.height,
+            "elapsed_seconds": round(time.monotonic() - started, 1),
+            "crop_mismatch": result["crop_mismatch"],
+            "detected_crop": result["detected_crop"],
+            "disease_probability": result["disease_probability"],
+            "detections": result["detections"],
+            "detection_count": result["detection_count"],
+            "found": result["found"],
+            "summary": result["summary"],
+            "reference_images": result["reference_images"],  # luon [] voi OpenAI
+        }
 
     # ==== BACKEND GEMINI (hien tai) - cho ca 7 cay, tu nhan dien dung/sai cay ====
     if DIAGNOSIS_BACKEND == "gemini":

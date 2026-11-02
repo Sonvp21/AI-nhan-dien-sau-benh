@@ -55,10 +55,10 @@ function agriApp(){
     // ==== TÍCH HỢP AI THẬT ====
     // Service FastAPI gio nam CHUNG trong repo Laravel nay (app.py o thu muc goc),
     // khong con tach rieng project fastaoi_plant nua - chi con 1 process/1 deploy.
-    // Backend chan doan HIEN TAI la Gemini (qua WebAI-to-API chay local, xem
-    // gemini_diagnosis.py + SETUP_NOTES.md) - dung chung cho CA 7 CAY, Gemini tu
-    // nhan dien ca dung/sai cay (xem crop_mismatch ben duoi). Code model YOLO/
-    // EfficientNet tu train van con nguyen trong app.py, chi tam thoi khong dung.
+    // Backend chan doan HIEN TAI la OpenAI vision (xem openai_diagnosis.py) - dung chung
+    // cho CA 7 CAY, AI tu nhan dien ca dung/sai cay (xem crop_mismatch ben duoi). Backend
+    // Gemini cu va model YOLO/EfficientNet tu train van con trong app.py, doi bang bien
+    // moi truong DIAGNOSIS_BACKEND.
     // URL that qua reverse proxy cua chinh domain Laravel (xem SETUP_NOTES.md muc 5,
     // OpenLiteSpeed Context proxy /predict -> agriai:8000) - KHONG duoc de localhost
     // o day, vi day la code chay trong TRINH DUYET cua nguoi dung cuoi, tro ve
@@ -77,6 +77,7 @@ function agriApp(){
 
     // ==== chẩn đoán / animation kết quả ====
     diagnosing:false,
+    diagnosingStep:'',   // cau hien trong luc cho AI (doi theo moc thoi gian, xem agri-image.js)
     diagnosed:false,
     async runDiagnosis(){
       if(this.diagnosing) return;
@@ -90,14 +91,13 @@ function agriApp(){
 
       if(apiKey && photoFile){
         try{
-          const formData = new FormData();
-          formData.append('file', photoFile);
-          formData.append('crop', apiKey);
-          const res = await fetch(this.AI_API_URL, { method:'POST', body: formData });
-          if(!res.ok) throw new Error('API lỗi: ' + res.status);
-          const data = await res.json();
+          // Thu nho anh, gui co han chot 75s, cap nhat cau tien do (agri-image.js)
+          this.diagnosingStep = 'Đang chuẩn bị ảnh...';
+          const data = await window.agriDiagnoseRequest(this.AI_API_URL, photoFile, apiKey, (text) => {
+            if(this.diagnosing) this.diagnosingStep = text;
+          });
 
-          // Gemini phat hien anh KHONG khop cay da chon -> chan lai, khong hien
+          // AI phat hien anh KHONG khop cay da chon -> chan lai, khong hien
           // chan doan benh (tranh chan doan sai tren anh cay khac).
           if(data.crop_mismatch){
             this.liveResult = {
@@ -146,9 +146,8 @@ function agriApp(){
             // khac nhau tren cung 1 anh.
             detections: this.uniqueDiseaseNames(data.detections),
             symptoms: [],
-            // THU NGHIEM: anh Gemini TU TIM tren web (khong phai anh tu ve), xem
-            // symptomPages getter + gemini_diagnosis.py. Moi phan tu dang
-            // {url, title} - co the la [] neu ban dang chay chua ho tro.
+            // Anh tham khao tim tren web: chi backend Gemini cu moi co, OpenAI luon tra [] -
+            // khi do khoi "Anh tham khao" ben photo-panel tu an (symptomPages rong).
             referenceImages: data.reference_images || [],
           };
           this.diagnosing = false;
@@ -157,7 +156,7 @@ function agriApp(){
         }catch(err){
           this.diagnosing = false;
           console.error(err);
-          alert('Không kết nối được tới AI server, vui lòng thử lại sau.');
+          alert((err && err.userMessage) || 'Không kết nối được tới AI server, vui lòng thử lại sau.');
         }
         return;
       }
@@ -577,10 +576,10 @@ function agriApp(){
     get info(){ return this.liveResult || this.diseaseDB[this.selectedCrop]; },
     get symptomPages(){
       // Du lieu mau (demo): dung sac "symptoms" tinh (emoji + caption, khong co
-      // anh thuc). AI thuc (Gemini): dung "referenceImages" - anh Gemini THUC SU
-      // tim duoc tren web luc no tu tra cuu (THU NGHIEM, co the rong neu ban
-      // WebAI-to-API dang chay chua ho tro - xem gemini_diagnosis.py). Card se tu
-      // hien icon la thay the neu tung anh khong co url (xem photo-panel.blade.php).
+      // anh thuc). AI thuc: dung "referenceImages" - chi co khi chay backend Gemini cu
+      // (anh Gemini tim tren web); voi OpenAI mang nay rong nen ham tra [] va khoi anh
+      // tham khao khong hien. Card se tu hien icon la thay the neu tung anh khong co url
+      // (xem photo-panel.blade.php).
       const raw = this.info.isLive ? (this.info.referenceImages || []) : (this.info.symptoms || []);
       if(!raw.length) return [];
       // Chuan hoa ve 1 format duy nhat {url, caption} de photo-panel.blade.php
