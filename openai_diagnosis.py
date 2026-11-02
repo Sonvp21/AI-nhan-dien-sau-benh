@@ -99,6 +99,10 @@ not need to add up to 100). For each one, signs_in_photo must describe the SPECI
 THIS photo (which part of the plant, shape, color, size and spread of the damage), never a generic \
 textbook description. If the plant looks healthy, return exactly ONE entry whose disease_name is \
 exactly "Cây khỏe mạnh", level is "Không có", and explain in signs_in_photo why it looks healthy.
+Calibrate your confidence honestly: give a probability above 80 ONLY when the visible signs are classic \
+and unambiguous for that one disease. When the photo shows a part other than the leaf (stem, node, \
+fruit, whole field), or the signs fit several diseases (for example blast vs sheath blight on rice), \
+list the 2-3 plausible candidates with honest, lower percentages instead of one very confident answer.
 
 Rules:
 - Never invent what you cannot see. If the photo is blurry, too dark, or too far to judge, say so in \
@@ -106,7 +110,9 @@ signs_in_photo and keep probabilities low.
 - If crop_match is false: set disease_probability to 0 and return an empty diseases array.
 - Every string value must be Vietnamese WITH FULL DIACRITICS, in plain practical words a farmer \
 understands, avoiding jargon. Only JSON keys stay in English.
-- Keep each text field to 2-3 sentences. symptoms (general, how to recognize this disease on any plant) \
+- Keep each text field of the FIRST (most likely) disease to 2-3 sentences, and each text field of the \
+other candidates to ONE short sentence (they are only alternatives the farmer may tap to read). \
+symptoms (general, how to recognize this disease on any plant) \
 and signs_in_photo (this photo only) must not repeat each other. treatment must be concrete and \
 actionable. prevention must be concrete and actionable.
 - When you mention a pesticide, name the active ingredient (hoạt chất) and tell the farmer to follow \
