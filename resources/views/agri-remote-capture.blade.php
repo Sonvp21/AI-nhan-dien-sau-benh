@@ -8,6 +8,7 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script src="{{ asset('js/agri-image.js') }}?v={{ file_exists(public_path('js/agri-image.js')) ? filemtime(public_path('js/agri-image.js')) : time() }}"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -45,7 +46,7 @@
 
       <div id="analyzingState" class="flex-1 hidden flex-col items-center justify-center gap-3 text-center">
         <i data-lucide="loader-circle" class="w-9 h-9 animate-spin" style="color:#1f6d3c"></i>
-        <p class="text-[13.5px] font-semibold" style="color:#1f6d3c">Đang phân tích ảnh bằng AI...</p>
+        <p id="analyzingText" class="text-[13.5px] font-semibold" style="color:#1f6d3c">Đang phân tích ảnh bằng AI...</p>
       </div>
 
       <div id="successState" class="flex-1 hidden flex-col items-center justify-center gap-3 text-center">
@@ -91,7 +92,7 @@
 
   // ==== cấu hình giống hệt agri-app.js bên màn hình trình chiếu ====
   // Service FastAPI nam chung trong repo Laravel (app.py o thu muc goc). Backend
-  // chan doan HIEN TAI la Gemini (qua WebAI-to-API local) - dung chung cho ca 7
+  // chan doan HIEN TAI la OpenAI vision (xem openai_diagnosis.py) - dung chung cho ca 7
   // cay, tu nhan dien duoc dung/sai cay (xem crop_mismatch o duoi).
   // QUAN TRONG: code nay chay trong TRINH DUYET CUA DIEN THOAI nguoi quet ma QR,
   // KHONG phai tren server - phai la domain THAT (khop voi AI_API_URL trong
@@ -261,7 +262,7 @@
       })
       .catch(function(err){
         console.error(err);
-        errorMsg.textContent = 'Không kết nối được tới AI server, vui lòng thử lại.';
+        errorMsg.textContent = (err && err.userMessage) || 'Không kết nối được tới AI server, vui lòng thử lại.';
         showOnly(errorState);
         actionBar.classList.add('hidden');
         if (typeof lucide !== 'undefined') { lucide.createIcons(); }
@@ -270,16 +271,13 @@
   });
 
   function diagnoseWithAI(photoFile, apiKey){
-    var formData = new FormData();
-    formData.append('file', photoFile);
-    formData.append('crop', apiKey);
-    return fetch(AI_API_URL, { method:'POST', body: formData })
-      .then(function(res){
-        if(!res.ok) throw new Error('API lỗi: ' + res.status);
-        return res.json();
+    // Thu nho anh, han chot thoi gian, cau tien do va loi tieng Viet: xem public/js/agri-image.js
+    var analyzingText = document.getElementById('analyzingText');
+    return window.agriDiagnoseRequest(AI_API_URL, photoFile, apiKey, function(text){
+        if(analyzingText) analyzingText.textContent = text;
       })
       .then(function(data){
-        // Gemini phat hien anh KHONG khop cay da chon -> chan lai, khong hien chan
+        // AI phat hien anh KHONG khop cay da chon -> chan lai, khong hien chan
         // doan benh (giong het xu ly trong agri-app.js).
         if(data.crop_mismatch){
           return {
@@ -293,7 +291,7 @@
         }
 
         var summary = data.summary || {};
-        // "found" doc thang tu API (giong agri-app.js) - Gemini luon tra ve 1 entry
+        // "found" doc thang tu API (giong agri-app.js) - AI luon tra ve 1 entry
         // ke ca khi cay khoe, nen khong con doan qua disease_key === null duoc nua.
         var found = !!data.found;
         // Danh sach ten benh + % khong trung lap, giu thu tu API (da sap xep theo

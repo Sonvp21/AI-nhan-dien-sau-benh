@@ -93,6 +93,7 @@
   {{-- ?v=filemtime: chống trình duyệt/CDN cache JS cũ - mỗi lần sửa
        agri-app.js, mtime đổi -> URL đổi -> trình duyệt buộc tải bản mới,
        không cần người dùng tự xoá cache/hard-refresh sau mỗi lần deploy. --}}
+  <script src="{{ asset('js/agri-image.js') }}?v={{ file_exists(public_path('js/agri-image.js')) ? filemtime(public_path('js/agri-image.js')) : time() }}"></script>
   <script src="{{ asset('js/agri-app.js') }}?v={{ file_exists(public_path('js/agri-app.js')) ? filemtime(public_path('js/agri-app.js')) : time() }}"></script>
 </body>
 </html>

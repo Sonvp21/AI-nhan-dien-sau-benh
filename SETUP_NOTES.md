@@ -4,7 +4,51 @@ Domain Laravel demo: (xem vhost đang dùng)
 Domain FastAPI (qua reverse proxy chung domain): https://aiplant.girc.edu.vn/predict
 VPS: 14.225.202.210, path: ~/project/AI-nhan-dien-sau-benh
 
-## 0. Backend chẩn đoán HIỆN TẠI: Gemini (qua WebAI-to-API)
+## 0. Backend chẩn đoán HIỆN TẠI: OpenAI (vision)
+`app.py` chọn backend qua biến môi trường `DIAGNOSIS_BACKEND` (mặc định `openai`):
+- **`openai`** (hiện tại): gửi ảnh (đã xoay đúng chiều, thu nhỏ còn 1024px, mã hóa base64) thẳng cho OpenAI,
+  ép trả JSON theo schema. Dùng chung cho cả 7 cây, AI tự kiểm tra ảnh có đúng cây đã chọn không. Pipeline và
+  định dạng JSON của `/predict` giữ nguyên như bản Gemini, riêng `reference_images` luôn rỗng. Code: `openai_diagnosis.py`.
+  **Không cần** Docker, cookie Gemini, `webai.girc.edu.vn`, `/tmp-images` hay PyTorch.
+- **`gemini`**: bản cũ qua WebAI-to-API (xem mục 0b bên dưới), cần cầu nối Docker + cookie.
+- **`local`**: model tự train (cần `requirements-local.txt`).
+
+Cài đặt trên server (không cần torch, khoảng vài chục MB):
+```
+cd ~/project/AI-nhan-dien-sau-benh
+python3 -m venv venv
+./venv/bin/pip install -r requirements.txt
+cp .env.ai.example .env.ai && nano .env.ai     # điền OPENAI_API_KEY (file này KHÔNG commit)
+```
+`/etc/systemd/system/agriai.service`:
+```
+[Unit]
+Description=AgriAI FastAPI Service (chan doan benh cay bang OpenAI)
+After=network.target
+
+[Service]
+Type=simple
+User=girc-son
+WorkingDirectory=/home/girc-son/project/AI-nhan-dien-sau-benh
+EnvironmentFile=/home/girc-son/project/AI-nhan-dien-sau-benh/.env.ai
+ExecStart=/home/girc-son/project/AI-nhan-dien-sau-benh/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+Chỉ chạy **1 worker** (không thêm `--workers`), vì giới hạn lượt gọi theo IP đang lưu trong bộ nhớ của tiến trình.
+```
+sudo systemctl daemon-reload && sudo systemctl enable --now agriai
+curl http://127.0.0.1:8000/     # phải thấy "diagnosis_backend":"openai","openai_configured":true
+sudo journalctl -u agriai -n 50 --no-pager
+```
+Proxy OpenLiteSpeed `/predict` -> `127.0.0.1:8000` (mục 5) giữ nguyên; rule `/tmp-images` không còn cần.
+Chi phí: mỗi lượt chẩn đoán gọi OpenAI 1 lần, nên `/predict` có giới hạn mặc định 6 lượt/phút/IP và 1000 lượt/ngày
+(đổi bằng `DIAGNOSIS_RATE_PER_MINUTE`, `DIAGNOSIS_DAILY_LIMIT` trong `.env.ai`). Log mỗi lượt ghi số token và thời gian.
+
+## 0b. (CŨ) Backend chẩn đoán Gemini (qua WebAI-to-API)
 `app.py` có 1 công tắc `DIAGNOSIS_BACKEND` ở đầu file, đang để `"gemini"`:
 - **`"gemini"`** (hiện tại): gọi Gemini qua service **WebAI-to-API** - dùng chung cho
   **cả 7 cây**, kể cả Ngô/Sắn/Cà chua/Xoài chưa có model tự train. Gemini tự nhận diện

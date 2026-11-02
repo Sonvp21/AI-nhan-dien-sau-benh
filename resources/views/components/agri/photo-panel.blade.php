@@ -24,7 +24,7 @@
     <!-- overlay animation lúc đang chẩn đoán -->
     <div x-show="diagnosing" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="absolute inset-0 flex flex-col items-center justify-center gap-3" style="background:rgba(255,255,255,.92)">
       <i data-lucide="loader-circle" class="w-9 h-9 2xl:w-10 2xl:h-10 animate-spin" style="color:#1f6d3c"></i>
-      <span class="text-[13px] 2xl:text-[14px] font-semibold" style="color:#1f6d3c">Đang phân tích ảnh bằng AI...</span>
+      <span class="text-[13px] 2xl:text-[14px] font-semibold px-4 text-center" style="color:#1f6d3c" x-text="diagnosingStep || 'Đang phân tích ảnh bằng AI...'" aria-live="polite"></span>
     </div>
   </div>
 
@@ -39,9 +39,8 @@
   </div>
 
   <!-- TRIỆU CHỨNG KHÁC: chỉ hiện sau khi có kết quả. Với dữ liệu mẫu (demo) là
-       icon lá + caption tĩnh; với AI thật là ảnh Gemini THỰC SỰ tìm được trên web
-       lúc nó tự tra cứu (thử nghiệm, xem symptomPages getter + gemini_diagnosis.py
-       - có thể không có ảnh nào, khi đó cả khối này tự ẩn vì symptomPages rỗng). -->
+       icon lá + caption tĩnh. Với AI thật, chỉ backend Gemini cũ mới trả ảnh tham
+       khảo tìm trên web; OpenAI không có nên symptomPages rỗng và cả khối này tự ẩn. -->
   <div x-show="diagnosed && symptomPages.length" x-cloak x-transition:enter="transition ease-out duration-500" x-transition:enter-start="opacity-0 translate-y-3" x-transition:enter-end="opacity-100 translate-y-0" class="mt-6">
     <p class="text-[13px] 2xl:text-[14px] font-semibold" style="color:#4a5245" x-text="info.isLive ? 'Ảnh tham khảo tìm được trên web:' : 'Triệu chứng khác thường gặp:'"></p>
     <div class="flex items-center gap-3 mt-3">

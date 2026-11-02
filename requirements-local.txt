@@ -1,0 +1,9 @@
+# Thêm vào requirements.txt khi chạy DIAGNOSIS_BACKEND=local (model YOLO/EfficientNet tự train).
+# QUAN TRỌNG: server chỉ có CPU thì phải cài torch + torchvision bản CPU-only TRƯỚC, nếu không pip tự tải
+# bản CUDA (nặng thêm vài GB, server không dùng được):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# Máy Windows có GPU (để train) thì dùng bản cu121 thay vì cpu ở lệnh trên.
+-r requirements.txt
+torch
+torchvision
+ultralytics
