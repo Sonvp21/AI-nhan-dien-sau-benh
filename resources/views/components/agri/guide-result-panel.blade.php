@@ -42,9 +42,9 @@
       <div>
         <p class="text-[21px] md:text-[22px] 2xl:text-[25px] font-bold" style="color:#c1440e">Ảnh không khớp với cây đã chọn</p>
         <p class="text-[13px] 2xl:text-[14px] mt-2.5 px-3 py-2 rounded-lg" style="background:#fff7ed;color:#c9762c;border:1px dashed #f0d9c4">
-          Ảnh này trông giống
-          <span class="font-semibold" x-text="info.detectedCrop || 'một loại cây khác'"></span>
-          hơn là cây bạn đã chọn. Vui lòng chọn lại đúng loại cây hoặc chụp ảnh khác.
+          AI nhận thấy trong ảnh:
+          <span class="font-semibold" x-text="info.detectedCrop || 'một loại cây khác'"></span>.
+          Vui lòng chọn lại đúng loại cây hoặc chụp ảnh khác.
         </p>
       </div>
     </template>

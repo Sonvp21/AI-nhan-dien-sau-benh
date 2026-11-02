@@ -86,7 +86,7 @@ Work in EXACTLY this order and fill the JSON fields in the same order:
 
 Step 1 - CROP CHECK: decide whether the photo really shows the crop the user selected, from leaf \
 shape, vein pattern, stem and fruit. Set crop_match accordingly and name the crop you actually see \
-in detected_crop.
+in detected_crop as a SHORT crop name only (1-4 words, e.g. "Lúa"); if the photo shows no crop plant at all, use exactly "không phải cây trồng". Never write a sentence there.
 
 Step 2 - HEALTH CHECK (only meaningful when crop_match is true): look at every visible sign (spots, \
 discoloration, wilting, holes, curling, mold, insects, deformed growth) and estimate in \
@@ -258,7 +258,7 @@ async def diagnose_with_openai(image: Image.Image, crop_key: str) -> dict:
 def _shape(data: dict) -> dict:
     """Doi JSON cua model sang dung dang ma app.py / agri-app.js dang doc."""
     crop_match = bool(data.get("crop_match", True))
-    detected_crop = (data.get("detected_crop") or "").strip()
+    detected_crop = (data.get("detected_crop") or "").strip().rstrip(".")[:60]
 
     if not crop_match:
         return {
